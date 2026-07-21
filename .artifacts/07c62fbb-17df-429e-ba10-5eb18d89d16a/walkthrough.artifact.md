@@ -1,44 +1,30 @@
-# Advanced Ride Analytics & Session Tracking Walkthrough
+# Fuel Consumption & Analytics Refinement Walkthrough
 
-We have transformed the application from a simple live monitor into a comprehensive ride analysis tool, featuring session management, detailed statistics, and interactive charts.
+We have refined the fuel tracking system to focus on absolute consumption in liters, providing a more direct "trip cost" and efficiency metric for each ride session.
 
 ## Changes Made
 
-### 1. Ride Session Management
-- **Persistence:** Added a `sessions` table in the Room database to group ride data.
-- **Rich Data:** Each session now stores summary statistics:
-    - Start and End times.
-    - **Dual Distance Tracking:** Calculated via GPS coordinates AND the motorcycle's internal odometer (PID `222503`).
-    - **Peak Performance:** Max Speed, Max Lean Angle (Left & Right), and Max Coolant Temperature.
-- **Customization:** Users can now rename their rides (e.g., "Sunday Coastal Run") via the new Analysis screen.
+### 1. Trip Fuel Accumulation
+- **Logic:** Updated `TelemetryService.kt` to integrate the real-time `fuelRate` (L/h) over the duration of the ride.
+- **Accuracy:** The app now calculates fuel consumed every 200ms and accumulates it into a `totalFuelLiters` value for the session.
 
-### 2. Expanded OBD2 Telemetry
-- **Engine Health:** Added monitoring for Engine Coolant Temperature (PID `0105`).
-- **Fuel Monitoring:**
-    - Attempting to query **Fuel Rate (PID `015E`)** for real-time liters/hour data.
-    - Monitoring **Fuel Level (PID `012F`)** for tank percentage.
-- **Dual Header Switching:** Optimized communication to fetch Engine and ABS/IMU data seamlessly.
+### 2. Data Model Update
+- **Session:** Added `totalFuelLiters` (Float) to the `Session` entity.
+- **Database:** Incremented version to **7** in `AppDatabase.kt`.
 
-### 3. Integrated Analytics Screen
-- **UI:** A new "Analysis" (İstatistikler) tab in the navigation bar.
-- **Interactive Charts:** Powered by the **Vico** library, providing visual trends for:
-    - Speed vs. RPM over the duration of the ride.
-    - (Future expansion for lean and fuel trends).
-- **Session List:** A clean list showing date, time, and distance summary for all past rides.
-
-### 4. Code Integrity & Modernization
-- **Cleanup:** Fixed all build errors related to the Credential Manager migration.
-- **Organization:** Moved all hardcoded UI text to localized string resources.
+### 3. Analytics UI Enhancement
+- **Analysis Screen:** Each ride session card now explicitly displays the total fuel consumed under the **"FUEL"** label (e.g., "1.45 L").
+- **Stat Item:** Added a formatted display to show two decimal places for precise liter tracking.
 
 ## Verification Steps
 
-1. **Session Creation:** Start tracking, ride for a few minutes, then stop. Navigate to the "İstatistikler" tab and verify the new session appears with accurate times and distances.
-2. **Renaming:** Tap the "Edit" icon on a session card and rename it. Verify the change persists.
-3. **Chart Check:** Tap a session to view the detail charts. Ensure the Speed and RPM graphs render correctly based on the recorded telemetry.
-4. **Distance Comparison:** Compare the "BIKE" (Odometer) and "GPS" distances in the session summary to see how well they align.
+1. **Start Tracking:** Begin a new session.
+2. **Ride:** As you ride, the `fuelRate` provided by the OBD2 adapter is integrated into the session totals.
+3. **Stop Tracking:** After stopping, go to the "İstatistikler" (Analysis) tab.
+4. **Verify Result:** Check the session card. You should see the total liters of fuel used for that specific trip alongside the bike and GPS distances.
 
 ## Project Status
 - **Auth:** Modern Credential Manager.
 - **Backup:** Google Drive API.
-- **Analytics:** Session tracking with Vico charts.
-- **Core:** Professional OBD2 (UDS) & IMU integration.
+- **Analytics:** Session tracking with Vico charts and absolute fuel consumption (Liters).
+- **Core:** Professional OBD2 & IMU integration with Dual Distance tracking.

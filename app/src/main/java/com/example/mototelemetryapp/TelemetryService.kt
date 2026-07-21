@@ -42,6 +42,7 @@ class TelemetryService : Service() {
     private var maxLeanLeft: Float = 0f
     private var maxLeanRight: Float = 0f
     private var maxCoolantTemp: Int = 0
+    private var totalFuelConsumedLiters: Float = 0f
 
     // Live data for UI
     private val _currentTelemetry = MutableStateFlow<TelemetryRecord?>(null)
@@ -120,11 +121,15 @@ class TelemetryService : Service() {
                     val leanBike = (obdData["LEAN_BIKE"] ?: 0).toFloat()
                     val coolant = obdData["COOLANT"] ?: 0
                     val speed = obdData["SPEED"] ?: 0
+                    val fuelRate = (obdData["FUEL_RATE"] ?: 0) / 100f
                     
                     // Update aggregates
                     maxSpeed = max(maxSpeed, speed)
                     maxCoolantTemp = max(maxCoolantTemp, coolant)
                     if (leanBike < 0) maxLeanLeft = max(maxLeanLeft, -leanBike) else maxLeanRight = max(maxLeanRight, leanBike)
+                    
+                    // Integrate fuel consumption (Rate is Liters/Hour, interval is 0.2s)
+                    totalFuelConsumedLiters += (fuelRate / 3600f) * 0.2f
 
                     val record = TelemetryRecord(
                         sessionId = currentSessionId,
@@ -138,7 +143,7 @@ class TelemetryService : Service() {
                         leanAnglePhone = leanPhone,
                         leanAngleBike = leanBike,
                         gForce = orientationManager.gForce.value,
-                        fuelRate = (obdData["FUEL_RATE"] ?: 0) / 100f,
+                        fuelRate = fuelRate,
                         fuelLevel = obdData["FUEL_LEVEL"] ?: 0,
                         coolantTemp = coolant,
                         altitude = lastLocation?.altitude ?: 0.0,
@@ -167,7 +172,8 @@ class TelemetryService : Service() {
                 maxSpeed = maxSpeed,
                 maxLeanLeft = maxLeanLeft,
                 maxLeanRight = maxLeanRight,
-                maxCoolantTemp = maxCoolantTemp
+                maxCoolantTemp = maxCoolantTemp,
+                totalFuelLiters = totalFuelConsumedLiters
             )
             finalSession?.let { db.telemetryDao().updateSession(it) }
             

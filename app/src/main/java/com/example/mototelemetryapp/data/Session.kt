@@ -17,5 +17,6 @@ data class Session(
     val maxCoolantTemp: Int = 0,
     val startOdometer: Long = 0,
     val endOdometer: Long = 0,
+    val totalFuelLiters: Float = 0f,
     val avgFuelConsumption: Float = 0f
 )

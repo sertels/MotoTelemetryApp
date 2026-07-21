@@ -117,6 +117,7 @@ fun SessionCard(session: Session, onClick: () -> Unit, onRename: (String) -> Uni
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 StatItem(label = "BIKE", value = "%.1f km".format(session.totalDistanceBikeKm))
                 StatItem(label = "GPS", value = "%.1f km".format(session.totalDistanceGpsKm))
+                StatItem(label = "FUEL", value = "%.2f L".format(session.totalFuelLiters))
                 StatItem(label = "MAX LEAN", value = "%.0f°".format(maxOf(session.maxLeanLeft, session.maxLeanRight)))
             }
         }
