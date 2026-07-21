@@ -1,48 +1,50 @@
 # Moto Telemetry App - Voge 900DSX & BMW F900 Architecture
 
-Bu proje, **Voge 900DSX** (ve BMW F900 mimarisi tabanlı diğer motosikletler) için geliştirilmiş, sürüş verilerini canlı olarak takip eden, analiz eden ve kaydeden bir Android telemetri uygulamasıdır.
+This project is an Android telemetry application developed for the **Voge 900DSX** (and other motorcycles based on the BMW F900 architecture) to track, analyze, and record riding data in real-time.
 
-## 🚀 Temel Özellikler
+## 🚀 Key Features
 
-- **Canlı Motor Verileri (OBD2):** Bluetooth ELM327 adaptörü üzerinden Hız, Devir, Gaz Kolu Yüzdesi ve Ön/Arka Fren Basıncı (UDS/Enhanced PID) takibi.
-- **Fiziksel Analiz (IMU):** Telefonun dahili sensörlerini kullanarak gerçek zamanlı **Yatış Açısı (Lean Angle)** ve **G-Kuvveti** ölçümü.
-- **Rota Takibi (GPS):** Google Maps entegrasyonu ile sürüş rotasının harita üzerinde çizilmesi.
-- **Veri Kaydı (Room DB):** Tüm telemetri verilerinin (Hız, Devir, Yatış, GPS vb.) 5Hz (saniyede 5 kez) frekansla yerel veri tabanına kaydedilmesi.
-- **Modern Dashboard:** Jetpack Compose ile tasarlanmış, anlık verileri görselleştiren sportif gösterge paneli.
+- **Live Engine Data (OBD2):** Real-time monitoring of Speed, RPM, Throttle Position, and Front/Rear Brake Pressure (via UDS/Enhanced PIDs) using a Bluetooth ELM327 adapter.
+- **Physical Analysis (IMU):** Real-time **Lean Angle** and **G-Force** measurement using the phone's internal sensors and the motorcycle's internal IMU.
+- **Route Tracking (GPS):** Visualization of the riding route on a map using Google Maps integration.
+- **Data Logging (Room DB):** Recording all telemetry data (Speed, RPM, Lean, GPS, etc.) to a local database at 5Hz (5 times per second).
+- **Modern Dashboard:** A sporty dashboard designed with Jetpack Compose to visualize live data.
+- **Cloud Backup:** Secure backup and restore of ride data using Google Drive API.
 
-## 🛠 Kullanılan Teknolojiler
+## 🛠 Tech Stack
 
-- **Dil:** Kotlin
+- **Language:** Kotlin
 - **UI:** Jetpack Compose (Material 3)
-- **Mimari:** MVVM & Clean Architecture
-- **Veri Tabanı:** Room Database
-- **Bağlantı:** Bluetooth Classic (RFCOMM) & UDS Protocol
-- **Konum:** Google Play Services Fused Location
-- **Navigasyon:** Jetpack Navigation
+- **Architecture:** MVVM & Clean Architecture
+- **Database:** Room Database
+- **Connectivity:** Bluetooth Classic (RFCOMM) & UDS Protocol
+- **Location:** Google Play Services Fused Location
+- **Navigation:** Jetpack Navigation
+- **Cloud:** Google Drive API
 
-## 📋 Kurulum ve Kullanım
+## 📋 Setup and Usage
 
-1.  **Google Maps API:** `app/src/main/AndroidManifest.xml` dosyasındaki `com.google.android.geo.API_KEY` alanına kendi API anahtarınızı ekleyin.
-2.  **OBD2 Adaptörü:** Bluetooth ELM327 adaptörünüzü motosikletinize takın ve telefonunuzla eşleştirin (Eşleşme isminin "OBDII" içerdiğinden emin olun).
-3.  **İzinler:** Uygulama ilk açılışta Bluetooth, Konum ve Bildirim izinlerini isteyecektir.
-4.  **Takip:** Ana ekrandaki "Takibi Başlat" butonu ile veri toplama döngüsünü ve arka plan servisini başlatabilirsiniz.
+1.  **Google Maps API:** Add your own API key to the `com.google.android.geo.API_KEY` field in the `app/src/main/AndroidManifest.xml` file.
+2.  **OBD2 Adapter:** Plug your Bluetooth ELM327 adapter into the motorcycle and pair it with your phone (ensure the pairing name contains "OBDII").
+3.  **Permissions:** The app will request Bluetooth, Location, and Notification permissions on the first launch.
+4.  **Tracking:** You can start the data collection loop and background service using the "Start Tracking" button on the main screen.
 
-## 📸 Dashboard Arayüzü
+## 📸 Dashboard Interface
 
-- **Panel:** Hız, Devir, Gaz ve Fren barlarını gösterir. Motosiklet silüeti telefonun eğimine göre gerçek zamanlı olarak yatar.
-- **Geçmiş:** Kaydedilen rotayı harita üzerinde Polyline olarak görüntüler.
+- **Panel:** Displays Speed, RPM, Gear, Throttle, and Brake bars. The motorcycle silhouette tilts in real-time based on the selected sensor data.
+- **History:** View recorded routes as Polylines on the map.
 
-## 📖 Dökümantasyon ve Gelişim Süreci
+## 📖 Documentation and Development Process
 
-Projenin adım adım nasıl geliştirildiğini ve teknik detaylarını aşağıdaki belgelerden inceleyebilirsiniz:
+You can examine the step-by-step development and technical details of the project in the following documents:
 
-- [🚀 Uygulama ve Geliştirme Özeti (Walkthrough)](docs/walkthrough.md) - Yapılan tüm işlemlerin ve özelliklerin özeti.
-- [📝 Uygulama Planı (Implementation Plan)](docs/implementation_plan.md) - Mimari kararlar ve planlanan aşamalar.
+- [🚀 Development Walkthrough](docs/walkthrough.md) - Summary of all operations and features implemented.
+- [📝 Implementation Plan](docs/implementation_plan.md) - Architectural decisions and planned stages.
 
-## ⚠️ Önemli Notlar
+## ⚠️ Important Notes
 
-- **Yatış Açısı:** En doğru ölçüm için telefonun motosiklet üzerinde dikey ve sağlam bir şekilde monte edilmesi önerilir.
-- **UDS Desteği:** Fren basıncı gibi veriler BMW/Voge özel PID'leridir. ELM327 adaptörünüzün kalitesine göre bu verilerin okunabilirliği değişebilir.
+- **Lean Angle:** For the most accurate measurement using phone sensors, it is recommended to mount the phone vertically and securely on the motorcycle.
+- **UDS Support:** Data like brake pressure and motorcycle lean angle are BMW/Voge specific PIDs. The readability of this data may vary depending on the quality of your ELM327 adapter.
 
 ---
-*Geliştiren: Sertel Şekerci*
+*Developed by: Sertel Şekerci*
