@@ -1,37 +1,43 @@
-# Google Drive Backup & Gear Integration Walkthrough
+# Dual Lean Angle & Header Switching Walkthrough
 
-We have successfully implemented the cloud backup system and advanced gear tracking for the Moto Telemetry application.
+We have enhanced the telemetry system to capture lean angle from both the motorcycle's internal IMU (via OBD2) and the phone's sensors, allowing real-time switching on the dashboard.
 
 ## Changes Made
 
-### 1. Google Drive Cloud Backup
-- **New Manager:** [GoogleDriveManager.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/GoogleDriveManager.kt) handles Google Auth and Drive API interactions.
-- **Hidden Storage:** Backups are stored in the user's Google Drive "App Data" folder, keeping the user's main drive clean while ensuring data safety.
-- **UI Integration:** A new "Drive'a Yedekle" button in the Main Screen allows users to trigger a manual backup of their `telemetry_database`.
+### 1. Dual Lean Angle Persistence
+- **File:** [TelemetryRecord.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/data/TelemetryRecord.kt)
+- **Updates:**
+    - Renamed `leanAngle` to `leanAnglePhone`.
+    - Added `leanAngleBike` to store data coming directly from the bike's ECU.
+- **Database:** Incremented version to 5 in [AppDatabase.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/data/AppDatabase.kt).
 
-### 2. Gear Position Tracking
-- **OBD2 Integration:** Added UDS PID `2243F7` to query real-time gear data from the motorcycle's ECU.
-- **Dashboard:** A large, prominent gear indicator (1-6 and N) has been added to the live dashboard.
-- **Persistence:** Every gear shift is recorded in the Room database for post-ride analysis.
+### 2. Advanced OBD2 Communication
+- **File:** [BluetoothOBDManager.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/BluetoothOBDManager.kt)
+- **Header Switching:** Implemented `ATSH` commands to toggle between the Engine ECU (`7E0`) and the ABS/IMU Module (`7E1`).
+- **New PID:** Added `22D10D` query to fetch the motorcycle's internal roll angle.
 
-### 3. Dependencies & Configuration
-- **Libraries:** Added `play-services-auth`, `google-api-services-drive`, and `google-api-client-android`.
-- **Packaging:** Configured Gradle to handle duplicate resource files required by the Google Drive SDK.
+### 3. Interactive Dashboard
+- **File:** [DashboardScreen.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/ui/DashboardScreen.kt)
+- **Toggle Feature:**
+    - Users can now **tap the lean indicator** to switch between Phone (`TEL`) and Motorcycle (`MOTO`) data sources.
+    - Added a `SwapHoriz` icon and source label for clarity.
+
+### 4. Integrated Logic
+- **File:** [TelemetryService.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/TelemetryService.kt)
+- **Recording:** The service now captures and saves both values simultaneously every 200ms.
 
 ## Verification Steps
 
-1. **Gear Indicator:** Start the service and shift gears on your motorcycle. The Dashboard should update immediately.
-2. **Cloud Backup:**
-    - Click "Drive'a Yedekle".
-    - Log in with your Google account.
-    - Wait for the "Yedekleme başarılı!" toast message.
-3. **Logcat:** Monitor `GoogleDriveManager` tags to see the upload progress and file ID.
+1. **Source Toggle:** On the Dashboard, tap the central lean indicator. You should see the label switch between `TEL` and `MOTO`.
+2. **Phone Sensor Test:** Select `TEL`. Tilt your phone and verify the visual tilts accordingly.
+3. **Bike Sensor Test:** Select `MOTO`. If connected to the bike, the visual will now follow the bike's internal IMU data.
+4. **Data Verification:** Check the **Database Inspector** to see both `leanAnglePhone` and `leanAngleBike` columns being populated.
 
-> [!IMPORTANT]
-> Ensure that the SHA-1 and Package Name provided match your Google Cloud Console configuration for the authentication to succeed.
+> [!TIP]
+> Using the `MOTO` source is highly recommended for track days as it remains accurate regardless of how the phone is mounted or if it moves in your pocket.
 
-## Final Summary
-The app is now a complete professional tool:
-- **Live Monitoring:** Speed, RPM, Gear, Throttle, Brake (F/R), Lean Angle, G-Force.
-- **Post-Ride Analysis:** Route mapping on Google Maps and full data persistence.
-- **Data Safety:** Cloud backup to Google Drive.
+## Summary of All Tracked Data
+- **Engine:** RPM, Speed, Gear, Throttle, Brake (Front/Rear).
+- **Physics:** Lean Angle (Phone & Bike), G-Force.
+- **Geo:** Latitude, Longitude.
+- **System:** Timestamp.
