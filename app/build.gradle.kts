@@ -81,4 +81,9 @@ dependencies {
     implementation("com.google.apis:google-api-services-drive:v3-rev20240123-2.0.0")
     implementation("com.google.http-client:google-http-client-gson:1.44.1")
 
+    // Modern Identity & Credentials
+    implementation("androidx.credentials:credentials:1.6.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.6.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.2.0")
+
 }

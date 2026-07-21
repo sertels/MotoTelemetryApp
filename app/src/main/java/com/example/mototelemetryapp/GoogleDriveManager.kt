@@ -1,12 +1,8 @@
 package com.example.mototelemetryapp
 
+import android.accounts.Account
 import android.content.Context
 import android.util.Log
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInAccount
-import com.google.android.gms.auth.api.signin.GoogleSignInClient
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.Scope
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.http.FileContent
 import com.google.api.client.http.javanet.NetHttpTransport
@@ -15,29 +11,18 @@ import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.util.Collections
 
-@Suppress("DEPRECATION")
 class GoogleDriveManager(private val context: Context) {
 
-    private val TAG = "GoogleDriveManager"
+    private val tag = "GoogleDriveManager"
 
-    fun getGoogleSignInClient(): GoogleSignInClient {
-        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestEmail()
-            .requestIdToken("215653511600-csa6ge8s64b5dacl7to64hhscfr0p85s.apps.googleusercontent.com")
-            .requestScopes(Scope(DriveScopes.DRIVE_APPDATA))
-            .build()
-        return GoogleSignIn.getClient(context, gso)
-    }
-
-    suspend fun uploadDatabase(account: GoogleSignInAccount): Boolean = withContext(Dispatchers.IO) {
+    suspend fun uploadDatabase(account: Account): Boolean = withContext(Dispatchers.IO) {
         try {
             val credential = GoogleAccountCredential.usingOAuth2(
                 context, Collections.singleton(DriveScopes.DRIVE_APPDATA)
             )
-            credential.selectedAccount = account.account
+            credential.selectedAccount = account
 
             val googleDriveService = Drive.Builder(
                 NetHttpTransport(),
@@ -45,10 +30,10 @@ class GoogleDriveManager(private val context: Context) {
                 credential
             ).setApplicationName("Moto Telemetry App").build()
 
-            // Room veri tabanı dosyası
+            // Room database file
             val dbFile = context.getDatabasePath("telemetry_database")
             if (!dbFile.exists()) {
-                Log.e(TAG, "Veri tabanı dosyası bulunamadı.")
+                Log.e(tag, "Database file not found.")
                 return@withContext false
             }
 
@@ -59,10 +44,10 @@ class GoogleDriveManager(private val context: Context) {
             val content = FileContent("application/x-sqlite3", dbFile)
             googleDriveService.files().create(metadata, content).execute()
             
-            Log.d(TAG, "Yedekleme başarıyla tamamlandı.")
+            Log.d(tag, "Backup successfully completed.")
             return@withContext true
         } catch (e: Exception) {
-            Log.e(TAG, "Yedekleme hatası: ${e.message}")
+            Log.e(tag, "Backup error: ${e.message}")
             false
         }
     }

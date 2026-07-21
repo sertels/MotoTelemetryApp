@@ -2,3 +2,10 @@
 - [x] Clean up `MainActivity.kt` (remove SDK 31 checks)
 - [x] Clean up `ui/theme/Theme.kt` (simplify dynamic color check)
 - [x] Sync Gradle and verify project integrity
+- [x] Migrate to Credential Manager for Google Drive
+    - [x] Add `androidx.credentials` and `googleid` dependencies
+    - [x] Refactor `GoogleDriveManager.kt` to use modern authorized accounts
+    - [x] Update `MainActivity.kt` with `CredentialManager` flow
+    - [x] Implement `Identity.getAuthorizationClient` for Drive scopes
+    - [x] Remove all deprecated `GoogleSignIn` code
+    - [x] Verify backup still works

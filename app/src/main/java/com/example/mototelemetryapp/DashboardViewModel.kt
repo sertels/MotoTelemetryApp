@@ -1,5 +1,6 @@
 package com.example.mototelemetryapp
 
+import android.accounts.Account
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -9,14 +10,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mototelemetryapp.data.AppDatabase
 import com.example.mototelemetryapp.data.TelemetryRecord
-import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 enum class LeanSource { PHONE, BIKE }
 
-@Suppress("DEPRECATION")
 class DashboardViewModel : ViewModel() {
 
     private val _leanSource = MutableStateFlow(LeanSource.PHONE)
@@ -41,7 +40,7 @@ class DashboardViewModel : ViewModel() {
     private val _history = MutableStateFlow<List<TelemetryRecord>>(emptyList())
     val history = _history.asStateFlow()
 
-    fun backupToCloud(context: Context, account: GoogleSignInAccount) {
+    fun backupToCloud(context: Context, account: Account) {
         viewModelScope.launch {
             _backupStatus.value = context.getString(R.string.backup_started)
             val manager = GoogleDriveManager(context)

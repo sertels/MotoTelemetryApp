@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.layout.*
@@ -26,19 +27,28 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.os.LocaleListCompat
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.mototelemetryapp.ui.DashboardScreen
 import com.example.mototelemetryapp.ui.HistoryScreen
 import com.example.mototelemetryapp.ui.theme.MotoTelemetryAppTheme
-import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.Scope
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.api.services.drive.DriveScopes
+import kotlinx.coroutines.launch
 
-@Suppress("DEPRECATION")
 class MainActivity : ComponentActivity() {
     
     private val dashboardViewModel: DashboardViewModel by viewModels()
+    private val credentialManager by lazy { CredentialManager.create(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,7 +56,7 @@ class MainActivity : ComponentActivity() {
             val context = LocalContext.current
             val navController = rememberNavController()
             
-            // Servise bağlanma/ayrılma yönetimi
+            // Service binding management
             DisposableEffect(Unit) {
                 dashboardViewModel.bindService(context)
                 dashboardViewModel.fetchHistory(context)
@@ -55,17 +65,19 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val googleSignInLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.StartActivityForResult()
+            val authorizationLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.StartIntentSenderForResult()
             ) { result ->
-                val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-                try {
-                    val account = task.getResult(ApiException::class.java)
-                    if (account != null) {
-                        dashboardViewModel.backupToCloud(context, account)
+                if (result.resultCode == RESULT_OK) {
+                    try {
+                        Identity.getAuthorizationClient(this)
+                            .getAuthorizationResultFromIntent(result.data)
+                        
+                        // Permission granted, start backup
+                        dashboardViewModel.backupToCloud(context, android.accounts.Account("authorized", "com.google"))
+                    } catch (e: ApiException) {
+                        Log.e("MainActivity", "Authorization failed: ${e.message}")
                     }
-                } catch (e: ApiException) {
-                    Log.e("MainActivity", "Google Sign-In failed: ${e.message}")
                 }
             }
 
@@ -124,8 +136,45 @@ class MainActivity : ComponentActivity() {
                                 onStartService = { startTelemetryService() },
                                 onStopService = { stopService(Intent(this@MainActivity, TelemetryService::class.java)) },
                                 onBackup = {
-                                    val manager = GoogleDriveManager(context)
-                                    googleSignInLauncher.launch(manager.getGoogleSignInClient().signInIntent)
+                                    lifecycleScope.launch {
+                                        try {
+                                            // 1. Sign-in
+                                            val googleIdOption = GetGoogleIdOption.Builder()
+                                                .setFilterByAuthorizedAccounts(false)
+                                                .setServerClientId("215653511600-csa6ge8s64b5dacl7to64hhscfr0p85s.apps.googleusercontent.com")
+                                                .build()
+
+                                            val request = GetCredentialRequest.Builder()
+                                                .addCredentialOption(googleIdOption)
+                                                .build()
+
+                                            val result = credentialManager.getCredential(context, request)
+                                            val credential = result.credential
+                                            
+                                            if (credential is GoogleIdTokenCredential) {
+                                                val email = credential.id
+                                                val account = android.accounts.Account(email, "com.google")
+
+                                                // 2. Request Drive Authorization
+                                                val authRequest = AuthorizationRequest.builder()
+                                                    .setRequestedScopes(listOf(Scope(DriveScopes.DRIVE_APPDATA)))
+                                                    .build()
+
+                                                Identity.getAuthorizationClient(this@MainActivity)
+                                                    .authorize(authRequest)
+                                                    .addOnSuccessListener { authResult ->
+                                                        if (authResult.hasResolution()) {
+                                                            val intentSenderRequest = IntentSenderRequest.Builder(authResult.pendingIntent!!.intentSender).build()
+                                                            authorizationLauncher.launch(intentSenderRequest)
+                                                        } else {
+                                                            dashboardViewModel.backupToCloud(context, account)
+                                                        }
+                                                    }
+                                            }
+                                        } catch (e: Exception) {
+                                            Log.e("MainActivity", "Backup flow failed", e)
+                                        }
+                                    }
                                 },
                                 onLanguageChange = { tag ->
                                     val appLocale: LocaleListCompat = LocaleListCompat.forLanguageTags(tag)
@@ -158,14 +207,13 @@ fun MainScreen(
         Manifest.permission.BLUETOOTH_SCAN,
         Manifest.permission.BLUETOOTH_CONNECT
     )
-
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         permissions.add(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { results ->
+    ) { results: Map<String, Boolean> ->
         val allGranted = results.values.all { it }
         if (!allGranted) {
             Log.w("MainActivity", "Not all permissions granted")
@@ -211,7 +259,7 @@ fun MainScreen(
             
             Spacer(modifier = Modifier.height(48.dp))
             
-            // Dil Seçimi
+            // Language Selection
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Language, contentDescription = null, tint = Color.Gray)
                 Spacer(modifier = Modifier.width(8.dp))
