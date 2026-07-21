@@ -78,13 +78,12 @@ dependencies {
     implementation("com.google.http-client:google-http-client-gson:1.44.1")
 
     // Charting (Vico)
-    implementation("com.patrykandpatrick.vico:compose-m3:3.2.3")
+    implementation("com.patrykandpatrick.vico:compose:2.0.0-alpha.28")
+    implementation("com.patrykandpatrick.vico:compose-m3:2.0.0-alpha.28")
+    implementation("com.patrykandpatrick.vico:core:2.0.0-alpha.28")
 
     testImplementation("org.mockito:mockito-core:5.11.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
-
-    // Charting (Vico)
-    implementation("com.patrykandpatrick.vico:compose-m3:2.0.0-alpha.28")
 
     // Modern Identity & Credentials
     implementation("androidx.credentials:credentials:1.6.0")
