@@ -1,0 +1,14 @@
+- [x] Create `BluetoothOBDManager.kt` for Bluetooth and ELM327 logic
+- [x] Update `TelemetryService.kt` to integrate the manager
+- [x] Implement runtime permission checks in `MainActivity.kt`
+- [x] Implement Room Database (Entity, DAO, Database)
+- [x] Create `OrientationManager.kt` for Lean Angle and G-Force
+- [x] Integrate DB and Sensors into `TelemetryService.kt`
+- [x] Add Throttle and Brake/ABS data to `TelemetryRecord`
+- [x] Update `BluetoothOBDManager` to query Throttle and Brake
+- [x] Verify data persistence for new fields
+- [x] Create `DashboardViewModel` and `DashboardScreen` UI
+- [x] Add Map and Navigation dependencies
+- [x] Create `HistoryScreen.kt` with Google Maps
+- [x] Implement Bottom Navigation in `MainActivity`
+- [x] Verify route drawing on Map
