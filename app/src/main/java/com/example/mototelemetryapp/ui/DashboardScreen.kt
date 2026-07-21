@@ -3,9 +3,12 @@ package com.example.mototelemetryapp.ui
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -13,13 +16,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.mototelemetryapp.LeanSource
+import com.example.mototelemetryapp.R
 import com.example.mototelemetryapp.data.TelemetryRecord
 
 @Composable
-fun DashboardScreen(data: TelemetryRecord?) {
+fun DashboardScreen(
+    data: TelemetryRecord?,
+    leanSource: LeanSource,
+    onToggleSource: () -> Unit
+) {
+    val currentLean = if (leanSource == LeanSource.PHONE) data?.leanAnglePhone else data?.leanAngleBike
+    val leanLabel = if (leanSource == LeanSource.PHONE) "TEL" else "MOTO"
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -34,18 +47,29 @@ fun DashboardScreen(data: TelemetryRecord?) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                Text(text = "HIZ", color = Color.Gray, fontSize = 12.sp)
+                Text(text = stringResource(R.string.speed), color = Color.Gray, fontSize = 12.sp)
                 Text(
                     text = "${data?.speed ?: 0}",
                     color = Color.White,
                     fontSize = 64.sp,
                     fontWeight = FontWeight.Bold
                 )
-                Text(text = "km/h", color = Color.Gray, fontSize = 14.sp)
+                Text(text = stringResource(R.string.unit_kmh), color = Color.Gray, fontSize = 14.sp)
+            }
+
+            // Vites Göstergesi
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(text = stringResource(R.string.gear), color = Color.Gray, fontSize = 12.sp)
+                Text(
+                    text = if (data?.gear == 0) "N" else "${data?.gear ?: 0}",
+                    color = if (data?.gear == 0) Color(0xFF00E676) else Color.White,
+                    fontSize = 80.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
             }
 
             Column(horizontalAlignment = Alignment.End) {
-                Text(text = "DEVİR", color = Color.Gray, fontSize = 12.sp)
+                Text(text = stringResource(R.string.rpm), color = Color.Gray, fontSize = 12.sp)
                 Text(
                     text = "${data?.rpm ?: 0}",
                     color = Color(0xFF00E676),
@@ -57,11 +81,12 @@ fun DashboardScreen(data: TelemetryRecord?) {
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Yatış Açısı Görseli (Basit bir motosiklet silüeti gibi eğilen çizgi)
+        // Yatış Açısı Görseli
         Box(
             modifier = Modifier
                 .size(200.dp)
-                .rotate(data?.leanAngle ?: 0f),
+                .rotate(currentLean ?: 0f)
+                .clickable { onToggleSource() },
             contentAlignment = Alignment.Center
         ) {
             Canvas(modifier = Modifier.size(150.dp)) {
@@ -77,26 +102,42 @@ fun DashboardScreen(data: TelemetryRecord?) {
                     strokeWidth = 8.dp.toPx()
                 )
             }
+            // Kaynak Göstergesi
+            Icon(
+                imageVector = Icons.Default.SwapHoriz,
+                contentDescription = null,
+                tint = Color.Gray.copy(alpha = 0.5f),
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+            )
         }
-        Text(
-            text = "${data?.leanAngle?.toInt() ?: 0}°",
-            color = Color.White,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                text = "${currentLean?.toInt() ?: 0}°",
+                color = Color.White,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = leanLabel,
+                color = Color.Gray,
+                fontSize = 12.sp
+            )
+        }
 
         Spacer(modifier = Modifier.weight(1f))
 
         // Gaz ve Fren Barları
         Column(modifier = Modifier.fillMaxWidth()) {
             // Gaz
-            BarIndicator(label = "GAZ", value = (data?.throttle ?: 0) / 100f, color = Color.Yellow)
+            BarIndicator(label = stringResource(R.string.throttle), value = (data?.throttle ?: 0) / 100f, color = Color.Yellow)
             Spacer(modifier = Modifier.height(8.dp))
             // Ön Fren
-            BarIndicator(label = "ÖN FREN", value = (data?.brakeFront ?: 0) / 100f, color = Color.Red)
+            BarIndicator(label = stringResource(R.string.brake_front), value = (data?.brakeFront ?: 0) / 100f, color = Color.Red)
             Spacer(modifier = Modifier.height(8.dp))
             // Arka Fren
-            BarIndicator(label = "ARKA FREN", value = (data?.brakeRear ?: 0) / 100f, color = Color.Magenta)
+            BarIndicator(label = stringResource(R.string.brake_rear), value = (data?.brakeRear ?: 0) / 100f, color = Color.Magenta)
         }
     }
 }

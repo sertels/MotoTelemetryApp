@@ -9,10 +9,12 @@ data class TelemetryRecord(
     val timestamp: Long,
     val speed: Int,
     val rpm: Int,
+    val gear: Int,
     val throttle: Int,
     val brakeFront: Int,
     val brakeRear: Int,
-    val leanAngle: Float,
+    val leanAnglePhone: Float,
+    val leanAngleBike: Float,
     val gForce: Float,
     val latitude: Double,
     val longitude: Double

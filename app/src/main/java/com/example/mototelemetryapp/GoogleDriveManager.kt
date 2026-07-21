@@ -25,6 +25,7 @@ class GoogleDriveManager(private val context: Context) {
     fun getGoogleSignInClient(): GoogleSignInClient {
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
+            .requestIdToken("215653511600-csa6ge8s64b5dacl7to64hhscfr0p85s.apps.googleusercontent.com")
             .requestScopes(Scope(DriveScopes.DRIVE_APPDATA))
             .build()
         return GoogleSignIn.getClient(context, gso)

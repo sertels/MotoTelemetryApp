@@ -1,45 +1,35 @@
-# Route Visualization on Map Implementation Plan
+# Localization (English/Turkish) Implementation Plan
 
-This plan outlines the integration of Google Maps to visualize recorded motorcycle routes and telemetry data.
-
-## User Review Required
-
-> [!IMPORTANT]
-> - **Google Maps API Key:** To display the map, you will need a Google Maps API Key. I will show you where to add it, but you'll need to generate one from the [Google Cloud Console](https://console.cloud.google.com/).
-> - **Navigation:** We will add a bottom navigation bar to switch between the **Dashboard** (Live Data) and **History** (Recorded Routes).
+This plan outlines the steps to add multi-language support (English and Turkish) to the Moto Telemetry application, including a UI toggle for dynamic switching.
 
 ## Proposed Changes
 
-### [Dependencies] - Map & Navigation
+### [Resources] - Localization Files
 
-#### [MODIFY] [build.gradle.kts](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/build.gradle.kts)
-Add dependencies for:
-- `com.google.maps.android:maps-compose`
-- `com.google.android.gms:play-services-maps`
-- `androidx.navigation:navigation-compose`
+#### [MODIFY] [strings.xml](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/res/values/strings.xml)
+Move all hardcoded strings in the code to this file (English as default).
 
-### [UI] - Navigation & Map Screen
+#### [NEW] [strings.xml (tr)](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/res/values-tr/strings.xml)
+Create a Turkish translation of all strings.
 
-#### [NEW] [HistoryScreen.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/ui/HistoryScreen.kt)
-A new screen that:
-- Fetches all records from Room DB.
-- Displays a Google Map using `GoogleMap` composable.
-- Draws a `Polyline` representing the motorcycle's path.
-- (Optional) Color-codes the path based on speed or lean angle (e.g., red for high speed, blue for slow).
+### [UI] - Language Selection
 
 #### [MODIFY] [MainActivity.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/MainActivity.kt)
-- Implement `NavHost` to manage screen switching.
-- Add a `NavigationBar` (Bottom Navigation) to toggle between Live Dashboard and Route History.
+- Add a language toggle (English/Turkish) to the `MainScreen`.
+- Use `AppCompatDelegate.setApplicationLocales` (or a custom context wrapper if needed for Compose) to switch the language dynamically.
 
-### [Data] - DAO Enhancements
+#### [MODIFY] [DashboardScreen.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/ui/DashboardScreen.kt)
+- Replace hardcoded strings like "HIZ", "VİTES", "DEVİR" with `stringResource(R.string...)`.
 
-#### [MODIFY] [TelemetryDao.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/data/TelemetryDao.kt)
-- Add a query to group records by session (if we implement session tracking) or just fetch the most recent trip.
+### [Core] - Codebase Cleanup
+
+#### [MODIFY] [BluetoothOBDManager.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/BluetoothOBDManager.kt) & [TelemetryService.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/TelemetryService.kt)
+- Move Log and Toast messages to string resources where applicable (Logs usually stay in English for debugging, but user-facing messages must be localized).
 
 ## Verification Plan
 
 ### Manual Verification
 - Deploy to device.
-- Navigate to the "History" tab.
-- Verify that a map appears (with a valid API key).
-- Confirm that the recorded path is drawn correctly following the GPS coordinates.
+- Toggle between English and Turkish on the Main Screen.
+- Verify that the Dashboard, History, and Toast messages update to the selected language.
+- Ensure the selected language persists across app restarts (if using a persistence mechanism).

@@ -111,37 +111,61 @@ class BluetoothOBDManager(private val context: Context) {
     private suspend fun startDataLoop() {
         withContext(Dispatchers.IO) {
             while (_isConnected.value) {
-                // RPM Sorgula (010C)
+                // --- Engine Data (Header 7E0) ---
+                sendCommand("ATSH7E0")
+                delay(50)
+                
                 sendCommand("010C")
                 val rpm = parseRPM(readResponse())
 
-                // Speed Sorgula (010D)
                 sendCommand("010D")
                 val speed = parseSpeed(readResponse())
 
-                // Throttle Sorgula (0111)
+                sendCommand("2243F7")
+                val gear = parseGear(readResponse())
+
                 sendCommand("0111")
                 val throttle = parseThrottle(readResponse())
 
-                // Ön Fren Sorgula (222B05)
+                // --- ABS/IMU Data (Header 7E1) ---
+                sendCommand("ATSH7E1")
+                delay(50)
+
                 sendCommand("222B05")
                 val brakeFront = parseBrake(readResponse(), "622B05")
 
-                // Arka Fren Sorgula (222B06)
                 sendCommand("222B06")
                 val brakeRear = parseBrake(readResponse(), "622B06")
+                
+                sendCommand("22D10D")
+                val leanBike = parseLeanBike(readResponse())
 
                 _obdData.value = mapOf(
                     "RPM" to rpm,
                     "SPEED" to speed,
+                    "GEAR" to gear,
                     "THROTTLE" to throttle,
                     "BRAKE_FRONT" to brakeFront,
-                    "BRAKE_REAR" to brakeRear
+                    "BRAKE_REAR" to brakeRear,
+                    "LEAN_BIKE" to leanBike
                 )
                 
-                delay(100) // 10Hz örnekleme
+                delay(100)
             }
         }
+    }
+
+    private fun parseLeanBike(response: String): Int {
+        // 62 D1 0D XX YY -> Signed 16-bit integer
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains("62D10D")) {
+                val hex = clean.substringAfter("62D10D").take(4)
+                val raw = Integer.parseInt(hex, 16).toShort().toInt()
+                // Genelde 0.1 çarpanı ile dereceye çevrilir
+                (raw * 0.1).toInt()
+            } else 0
+        } catch (e: Exception) { 0 }
     }
 
     private fun parseRPM(response: String): Int {
@@ -160,6 +184,19 @@ class BluetoothOBDManager(private val context: Context) {
             if (clean.contains("410D")) {
                 val hex = clean.substringAfter("410D").take(2)
                 Integer.parseInt(hex, 16)
+            } else 0
+        } catch (e: Exception) { 0 }
+    }
+
+    private fun parseGear(response: String): Int {
+        // 62 43 F7 XX -> XX is the gear
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains("6243F7")) {
+                val hex = clean.substringAfter("6243F7").take(2)
+                val rawGear = Integer.parseInt(hex, 16)
+                // BMW BMS-O genelde 0=N, 1-6=Gears. Bazı durumlarda 15=N.
+                if (rawGear == 15) 0 else rawGear
             } else 0
         } catch (e: Exception) { 0 }
     }

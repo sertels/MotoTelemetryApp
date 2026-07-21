@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_name">MotoTelemetryApp</string>
+    <string name="speed">HIZ</string>
+    <string name="gear">VİTES</string>
+    <string name="rpm">DEVİR</string>
+    <string name="unit_kmh">km/h</string>
+    <string name="throttle">GAZ</string>
+    <string name="brake_front">ÖN FREN</string>
+    <string name="brake_rear">ARKA FREN</string>
+    <string name="start_tracking">Takibi Başlat</string>
+    <string name="stop">Durdur</string>
+    <string name="backup_drive">Drive\'a Yedekle</string>
+    <string name="main_title">Voge 900DSX Telemetry</string>
+    <string name="service_title">Moto Telemetry Aktif</string>
+    <string name="service_content">Voge 900 verileri ve rota geçmişi kaydediliyor...</string>
+    <string name="backup_started">Yedekleme başlatıldı...</string>
+    <string name="backup_success">Yedekleme başarılı!</string>
+    <string name="backup_error">Yedekleme hatası!</string>
+    <string name="panel">Panel</string>
+    <string name="history">Geçmiş</string>
+    <string name="select_language">Dil</string>
+</resources>

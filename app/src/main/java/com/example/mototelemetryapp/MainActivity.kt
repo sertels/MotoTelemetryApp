@@ -4,46 +4,36 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.os.LocaleListCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.mototelemetryapp.ui.DashboardScreen
 import com.example.mototelemetryapp.ui.HistoryScreen
 import com.example.mototelemetryapp.ui.theme.MotoTelemetryAppTheme
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.common.api.ApiException
 
 class MainActivity : ComponentActivity() {
     
@@ -51,7 +41,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         setContent {
             val context = LocalContext.current
             val navController = rememberNavController()
@@ -65,6 +54,27 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val googleSignInLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+                try {
+                    val account = task.getResult(ApiException::class.java)
+                    if (account != null) {
+                        dashboardViewModel.backupToCloud(context, account)
+                    }
+                } catch (e: ApiException) {
+                    Log.e("MainActivity", "Google Sign-In failed: ${e.message}")
+                }
+            }
+
+            val backupStatus by dashboardViewModel.backupStatus.collectAsState()
+            LaunchedEffect(backupStatus) {
+                backupStatus?.let {
+                    Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+                }
+            }
+
             MotoTelemetryAppTheme {
                 val isBound by dashboardViewModel.isServiceBound.collectAsState()
                 
@@ -75,13 +85,13 @@ class MainActivity : ComponentActivity() {
                             NavigationBar {
                                 NavigationBarItem(
                                     icon = { Icon(Icons.Default.Speed, contentDescription = null) },
-                                    label = { Text("Panel") },
-                                    selected = false, // Simplified for now
+                                    label = { Text(stringResource(R.string.panel)) },
+                                    selected = false,
                                     onClick = { navController.navigate("dashboard") }
                                 )
                                 NavigationBarItem(
                                     icon = { Icon(Icons.Default.History, contentDescription = null) },
-                                    label = { Text("Geçmiş") },
+                                    label = { Text(stringResource(R.string.history)) },
                                     selected = false,
                                     onClick = { navController.navigate("history") }
                                 )
@@ -95,7 +105,13 @@ class MainActivity : ComponentActivity() {
                                 composable("dashboard") {
                                     val telemetryFlow = dashboardViewModel.getTelemetryFlow()
                                     val currentData by (telemetryFlow?.collectAsState(initial = null) ?: remember { mutableStateOf(null) })
-                                    DashboardScreen(data = currentData)
+                                    val leanSource by dashboardViewModel.leanSource.collectAsState()
+                                    
+                                    DashboardScreen(
+                                        data = currentData,
+                                        leanSource = leanSource,
+                                        onToggleSource = { dashboardViewModel.toggleLeanSource() }
+                                    )
                                 }
                                 composable("history") {
                                     val history by dashboardViewModel.history.collectAsState()
@@ -105,7 +121,15 @@ class MainActivity : ComponentActivity() {
                         } else {
                             MainScreen(
                                 onStartService = { startTelemetryService() },
-                                onStopService = { stopService(Intent(this@MainActivity, TelemetryService::class.java)) }
+                                onStopService = { stopService(Intent(this@MainActivity, TelemetryService::class.java)) },
+                                onBackup = {
+                                    val manager = GoogleDriveManager(context)
+                                    googleSignInLauncher.launch(manager.getGoogleSignInClient().signInIntent)
+                                },
+                                onLanguageChange = { tag ->
+                                    val appLocale: LocaleListCompat = LocaleListCompat.forLanguageTags(tag)
+                                    AppCompatDelegate.setApplicationLocales(appLocale)
+                                }
                             )
                         }
                     }
@@ -125,7 +149,12 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreen(onStartService: () -> Unit, onStopService: () -> Unit) {
+fun MainScreen(
+    onStartService: () -> Unit, 
+    onStopService: () -> Unit, 
+    onBackup: () -> Unit,
+    onLanguageChange: (String) -> Unit
+) {
     val permissions = mutableListOf(
         Manifest.permission.ACCESS_FINE_LOCATION,
         Manifest.permission.ACCESS_COARSE_LOCATION
@@ -162,16 +191,36 @@ fun MainScreen(onStartService: () -> Unit, onStopService: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "Voge 900DSX Telemetry",
+                text = stringResource(R.string.main_title),
                 style = MaterialTheme.typography.headlineMedium
             )
             Spacer(modifier = Modifier.height(32.dp))
-            Button(onClick = onStartService) {
-                Text("Takibi Başlat")
+            
+            Button(onClick = onStartService, modifier = Modifier.width(200.dp)) {
+                Text(stringResource(R.string.start_tracking))
             }
             Spacer(modifier = Modifier.height(16.dp))
-            Button(onClick = onStopService) {
-                Text("Durdur")
+            
+            Button(onClick = onStopService, modifier = Modifier.width(200.dp)) {
+                Text(stringResource(R.string.stop))
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Button(onClick = onBackup, modifier = Modifier.width(200.dp)) {
+                Text(stringResource(R.string.backup_drive))
+            }
+            
+            Spacer(modifier = Modifier.height(48.dp))
+            
+            // Dil Seçimi
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Language, contentDescription = null, tint = Color.Gray)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = stringResource(R.string.select_language), color = Color.Gray)
+            }
+            Row {
+                TextButton(onClick = { onLanguageChange("en") }) { Text("English") }
+                TextButton(onClick = { onLanguageChange("tr") }) { Text("Türkçe") }
             }
         }
     }

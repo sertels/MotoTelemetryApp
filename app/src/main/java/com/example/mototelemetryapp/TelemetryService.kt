@@ -58,8 +58,8 @@ class TelemetryService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Moto Telemetry Aktif")
-            .setContentText("Voge 900 verileri ve rota geçmişi kaydediliyor...")
+            .setContentTitle(getString(R.string.service_title))
+            .setContentText(getString(R.string.service_content))
             .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setOngoing(true)
             .build()
@@ -104,10 +104,12 @@ class TelemetryService : Service() {
                         timestamp = System.currentTimeMillis(),
                         speed = obdData["SPEED"] ?: 0,
                         rpm = obdData["RPM"] ?: 0,
+                        gear = obdData["GEAR"] ?: 0,
                         throttle = obdData["THROTTLE"] ?: 0,
                         brakeFront = obdData["BRAKE_FRONT"] ?: 0,
                         brakeRear = obdData["BRAKE_REAR"] ?: 0,
-                        leanAngle = lean,
+                        leanAnglePhone = lean,
+                        leanAngleBike = (obdData["LEAN_BIKE"] ?: 0).toFloat(),
                         gForce = gForce,
                         latitude = lastLocation?.latitude ?: 0.0,
                         longitude = lastLocation?.longitude ?: 0.0
@@ -115,7 +117,7 @@ class TelemetryService : Service() {
                     
                     _currentTelemetry.value = record
                     db.telemetryDao().insertRecord(record)
-                    Log.d("TelemetryService", "Kayıt: Hız=${record.speed}, Devir=${record.rpm}, Gaz=%${record.throttle}, ÖnFren=${record.brakeFront}, ArkaFren=${record.brakeRear}")
+                    Log.d("TelemetryService", "Kayıt: Hız=${record.speed}, Vites=${record.gear}, Yatış(P)=${record.leanAnglePhone}, Yatış(B)=${record.leanAngleBike}")
                     
                     delay(200)
                 }
