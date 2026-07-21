@@ -18,6 +18,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Collections
 
+@Suppress("DEPRECATION")
 class GoogleDriveManager(private val context: Context) {
 
     private val TAG = "GoogleDriveManager"

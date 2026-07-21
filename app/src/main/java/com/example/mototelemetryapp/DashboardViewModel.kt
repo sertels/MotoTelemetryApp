@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 
 enum class LeanSource { PHONE, BIKE }
 
+@Suppress("DEPRECATION")
 class DashboardViewModel : ViewModel() {
 
     private val _leanSource = MutableStateFlow(LeanSource.PHONE)

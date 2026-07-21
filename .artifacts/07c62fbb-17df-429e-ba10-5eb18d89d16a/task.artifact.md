@@ -1,10 +1,4 @@
-- [x] Dual Lean Angle Integration
-- [x] Implement Google Drive Backup
-- [x] Add Multi-language Support (EN/TR)
-    - [x] Update `strings.xml` (EN) with all app text
-    - [x] Create `strings.xml` (TR) with translations
-    - [x] Update `DashboardScreen.kt` to use string resources
-    - [x] Update `MainActivity.kt` with language toggle and resources
-    - [x] Update `TelemetryService.kt` for localized notifications
-    - [x] Verify dynamic language switching
-- [x] Final project cleanup and documentation update
+- [x] Set `minSdk = 31` in `app/build.gradle.kts`
+- [x] Clean up `MainActivity.kt` (remove SDK 31 checks)
+- [x] Clean up `ui/theme/Theme.kt` (simplify dynamic color check)
+- [x] Sync Gradle and verify project integrity

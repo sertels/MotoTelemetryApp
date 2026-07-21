@@ -19,7 +19,6 @@ import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
-import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,7 +31,7 @@ import kotlinx.coroutines.launch
 
 class TelemetryService : Service() {
 
-    private val CHANNEL_ID = "TelemetryServiceChannel"
+    private val channelId = "TelemetryServiceChannel"
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     
     private lateinit var bluetoothOBDManager: BluetoothOBDManager
@@ -57,7 +56,7 @@ class TelemetryService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        val notification: Notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle(getString(R.string.service_title))
             .setContentText(getString(R.string.service_content))
             .setSmallIcon(android.R.drawable.ic_menu_compass)
@@ -135,14 +134,12 @@ class TelemetryService : Service() {
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val serviceChannel = NotificationChannel(
-                CHANNEL_ID,
-                "Motosiklet Takip Servisi",
-                NotificationManager.IMPORTANCE_DEFAULT
-            )
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(serviceChannel)
-        }
+        val serviceChannel = NotificationChannel(
+            channelId,
+            "Motosiklet Takip Servisi",
+            NotificationManager.IMPORTANCE_DEFAULT
+        )
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(serviceChannel)
     }
 }

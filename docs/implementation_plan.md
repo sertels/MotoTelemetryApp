@@ -1,35 +1,30 @@
-# Localization (English/Turkish) Implementation Plan
+# Increase Minimum SDK Version Plan
 
-This plan outlines the steps to add multi-language support (English and Turkish) to the Moto Telemetry application, including a UI toggle for dynamic switching.
+This plan outlines the steps to increase the minimum supported Android version to API 31 (Android 12) and clean up the codebase accordingly.
 
 ## Proposed Changes
 
-### [Resources] - Localization Files
+### [Build] - Gradle Update
 
-#### [MODIFY] [strings.xml](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/res/values/strings.xml)
-Move all hardcoded strings in the code to this file (English as default).
+#### [MODIFY] [build.gradle.kts](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/build.gradle.kts)
+- Set `minSdk = 31`.
+- Verify and update any dependencies that might benefit from a higher minSdk.
 
-#### [NEW] [strings.xml (tr)](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/res/values-tr/strings.xml)
-Create a Turkish translation of all strings.
-
-### [UI] - Language Selection
+### [Code] - SDK Check Cleanup
 
 #### [MODIFY] [MainActivity.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/MainActivity.kt)
-- Add a language toggle (English/Turkish) to the `MainScreen`.
-- Use `AppCompatDelegate.setApplicationLocales` (or a custom context wrapper if needed for Compose) to switch the language dynamically.
+- Remove `if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)` checks (API 31 is now the floor).
+- Keep `if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)` for POST_NOTIFICATIONS permission if necessary, as API 33 is higher than 31.
 
-#### [MODIFY] [DashboardScreen.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/ui/DashboardScreen.kt)
-- Replace hardcoded strings like "HIZ", "VİTES", "DEVİR" with `stringResource(R.string...)`.
-
-### [Core] - Codebase Cleanup
-
-#### [MODIFY] [BluetoothOBDManager.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/BluetoothOBDManager.kt) & [TelemetryService.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/TelemetryService.kt)
-- Move Log and Toast messages to string resources where applicable (Logs usually stay in English for debugging, but user-facing messages must be localized).
+#### [MODIFY] [Theme.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/ui/theme/Theme.kt)
+- Simplify dynamic color check.
 
 ## Verification Plan
 
+### Automated Tests
+- Run Gradle sync and a full project build to ensure compatibility.
+
 ### Manual Verification
-- Deploy to device.
-- Toggle between English and Turkish on the Main Screen.
-- Verify that the Dashboard, History, and Toast messages update to the selected language.
-- Ensure the selected language persists across app restarts (if using a persistence mechanism).
+- Deploy to an Android 12+ device (or emulator).
+- Verify that permissions are still requested correctly.
+- Ensure the Foreground Service starts without issues.

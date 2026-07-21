@@ -35,6 +35,7 @@ import com.example.mototelemetryapp.ui.theme.MotoTelemetryAppTheme
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
 
+@Suppress("DEPRECATION")
 class MainActivity : ComponentActivity() {
     
     private val dashboardViewModel: DashboardViewModel by viewModels()
@@ -140,11 +141,7 @@ class MainActivity : ComponentActivity() {
 
     private fun startTelemetryService() {
         val intent = Intent(this, TelemetryService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
+        startForegroundService(intent)
     }
 }
 
@@ -157,13 +154,10 @@ fun MainScreen(
 ) {
     val permissions = mutableListOf(
         Manifest.permission.ACCESS_FINE_LOCATION,
-        Manifest.permission.ACCESS_COARSE_LOCATION
+        Manifest.permission.ACCESS_COARSE_LOCATION,
+        Manifest.permission.BLUETOOTH_SCAN,
+        Manifest.permission.BLUETOOTH_CONNECT
     )
-
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        permissions.add(Manifest.permission.BLUETOOTH_SCAN)
-        permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
-    }
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         permissions.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -174,7 +168,7 @@ fun MainScreen(
     ) { results ->
         val allGranted = results.values.all { it }
         if (!allGranted) {
-            // İzinler verilmedi uyarısı
+            Log.w("MainActivity", "Not all permissions granted")
         }
     }
 
