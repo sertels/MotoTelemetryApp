@@ -40,3 +40,4 @@ We have successfully migrated the application's authentication and authorization
 - **Auth:** Modern Credential Manager.
 - **Backup:** Google Drive API (Authorized).
 - **Core:** OBD2, Sensors, Map, Room DB.
+- **Build:** SDK 37 (Android 15+) baseline for modern library compatibility.
