@@ -1,44 +1,30 @@
-# Migrate from GoogleSignIn to Credential Manager
+# Testing Strategy Plan
 
-This plan outlines the migration from the deprecated `GoogleSignIn` API to the modern `Credential Manager` and `Google Identity Services` for authentication and Google Drive authorization.
+This plan outlines the creation of unit tests to verify the core logic of the Moto Telemetry application, specifically the data parsing from OBD2 responses and coordinate handling.
 
 ## User Review Required
 
-> [!IMPORTANT]
-> The modern `Credential Manager` flow involves a few more steps for authorization (scopes) compared to the older one-stop-shop `GoogleSignIn`. We will use `Credential Manager` for the user picker and `AuthorizationClient` for requesting the Drive scope.
+> [!NOTE]
+> Since we cannot connect to a physical ELM327 adapter or a motorcycle in this environment, we will use **Unit Tests** with simulated data to verify that our parsers and logic work correctly.
 
 ## Proposed Changes
 
-### [Dependencies] - Auth & Credentials
+### [Tests] - Core Logic Verification
 
-#### [MODIFY] [build.gradle.kts](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/build.gradle.kts)
-Add modern identity and credential libraries:
-- `androidx.credentials:credentials:1.6.0`
-- `androidx.credentials:credentials-play-services-auth:1.6.0`
-- `com.google.android.libraries.identity.googleid:googleid:1.2.0`
+#### [NEW] [OBDParsingTest.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/test/java/com/example/mototelemetryapp/OBDParsingTest.kt)
+Create unit tests to verify:
+- **RPM Parsing:** Input `"410C1AF8"` -> Expected result.
+- **Speed Parsing:** Input `"410D32"` -> Expected `50`.
+- **Gear Parsing:** Input `"6243F703"` -> Expected `3`.
+- **Throttle Parsing:** Input `"4111FF"` -> Expected `100`.
+- **Brake Parsing:** Input `"622B053C"` -> Expected pressure in bar.
+- **Lean Angle (Bike) Parsing:** Input `"62D10D01F4"` -> Expected `50.0` or similar signed 16-bit handling.
 
-### [Core] - Identity Management
-
-#### [MODIFY] [GoogleDriveManager.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/GoogleDriveManager.kt)
-- Remove `GoogleSignIn` dependencies.
-- Update `uploadDatabase` to accept an `Account` object or an authorized email string.
-- (Optional) Refactor to use the authorized `GoogleAccountCredential` directly.
-
-### [UI] - Authentication Flow
-
-#### [MODIFY] [MainActivity.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/MainActivity.kt)
-- Implement `CredentialManager` to handle user sign-in.
-- Implement `Identity.getAuthorizationClient` to request the `DRIVE_APPDATA` scope.
-- Update the `onBackup` trigger to initiate this new sequence.
-
-#### [MODIFY] [DashboardViewModel.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/DashboardViewModel.kt)
-- Update `backupToCloud` signature to handle the new authorized account data.
+#### [NEW] [SensorLogicTest.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/test/java/com/example/mototelemetryapp/SensorLogicTest.kt)
+Verify the mathematical formulas used for G-force and lean angle if they can be isolated from Android's `SensorManager`.
 
 ## Verification Plan
 
-### Manual Verification
-- Deploy to device.
-- Click "Backup to Drive".
-- Verify the new "Credential Manager" bottom sheet appears for account selection.
-- Confirm the permission dialog for Drive access is shown.
-- Verify the backup is still successfully uploaded to the Drive App Data folder.
+### Automated Tests
+- Run `./gradlew test` to execute all unit tests.
+- Ensure all tests pass.

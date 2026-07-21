@@ -155,7 +155,7 @@ class BluetoothOBDManager(private val context: Context) {
         }
     }
 
-    private fun parseLeanBike(response: String): Int {
+    internal fun parseLeanBike(response: String): Int {
         // 62 D1 0D XX YY -> Signed 16-bit integer
         return try {
             val clean = response.replace(" ", "")
@@ -168,7 +168,7 @@ class BluetoothOBDManager(private val context: Context) {
         } catch (e: Exception) { 0 }
     }
 
-    private fun parseRPM(response: String): Int {
+    internal fun parseRPM(response: String): Int {
         return try {
             val clean = response.replace(" ", "")
             if (clean.contains("410C")) {
@@ -178,7 +178,7 @@ class BluetoothOBDManager(private val context: Context) {
         } catch (e: Exception) { 0 }
     }
 
-    private fun parseSpeed(response: String): Int {
+    internal fun parseSpeed(response: String): Int {
         return try {
             val clean = response.replace(" ", "")
             if (clean.contains("410D")) {
@@ -188,7 +188,7 @@ class BluetoothOBDManager(private val context: Context) {
         } catch (e: Exception) { 0 }
     }
 
-    private fun parseGear(response: String): Int {
+    internal fun parseGear(response: String): Int {
         // 62 43 F7 XX -> XX is the gear
         return try {
             val clean = response.replace(" ", "")
@@ -201,7 +201,7 @@ class BluetoothOBDManager(private val context: Context) {
         } catch (e: Exception) { 0 }
     }
 
-    private fun parseThrottle(response: String): Int {
+    internal fun parseThrottle(response: String): Int {
         // 41 11 XX -> XX * 100 / 255
         return try {
             val clean = response.replace(" ", "")
@@ -212,7 +212,7 @@ class BluetoothOBDManager(private val context: Context) {
         } catch (e: Exception) { 0 }
     }
 
-    private fun parseBrake(response: String, prefix: String): Int {
+    internal fun parseBrake(response: String, prefix: String): Int {
         // Response format: 62 [PID] [Value]
         return try {
             val clean = response.replace(" ", "")
