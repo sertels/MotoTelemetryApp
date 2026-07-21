@@ -1,6 +1,8 @@
-# Moto Telemetry App - Voge 900DSX & BMW F900 Architecture
+# Moto Telemetry App - Voge 900DSX (LX900-A)
 
-This project is an Android telemetry application developed for the **Voge 900DSX** (and other motorcycles based on the BMW F900 architecture) to track, analyze, and record riding data in real-time.
+This project is an Android telemetry application specifically optimized for the **Voge 900DSX** (Factory Model Code: **LX900-A**, also known as **DS900X**). 
+
+The application leverages the fact that this motorcycle shares the **BMW F900 architecture** and uses the **4M96001** twin-cylinder engine block (manufactured by Loncin), making it compatible with advanced BMW UDS diagnostic protocols.
 
 ## 🚀 Key Features
 

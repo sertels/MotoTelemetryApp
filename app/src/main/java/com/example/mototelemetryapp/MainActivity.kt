@@ -194,6 +194,11 @@ fun MainScreen(
                 text = stringResource(R.string.main_title),
                 style = MaterialTheme.typography.headlineMedium
             )
+            Text(
+                text = "Model: LX900-A | Engine: 4M96001",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.Gray
+            )
             Spacer(modifier = Modifier.height(32.dp))
             
             Button(onClick = onStartService, modifier = Modifier.width(200.dp)) {
