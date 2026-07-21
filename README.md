@@ -32,6 +32,13 @@ Bu proje, **Voge 900DSX** (ve BMW F900 mimarisi tabanlı diğer motosikletler) i
 - **Panel:** Hız, Devir, Gaz ve Fren barlarını gösterir. Motosiklet silüeti telefonun eğimine göre gerçek zamanlı olarak yatar.
 - **Geçmiş:** Kaydedilen rotayı harita üzerinde Polyline olarak görüntüler.
 
+## 📖 Dökümantasyon ve Gelişim Süreci
+
+Projenin adım adım nasıl geliştirildiğini ve teknik detaylarını aşağıdaki belgelerden inceleyebilirsiniz:
+
+- [🚀 Uygulama ve Geliştirme Özeti (Walkthrough)](docs/walkthrough.md) - Yapılan tüm işlemlerin ve özelliklerin özeti.
+- [📝 Uygulama Planı (Implementation Plan)](docs/implementation_plan.md) - Mimari kararlar ve planlanan aşamalar.
+
 ## ⚠️ Önemli Notlar
 
 - **Yatış Açısı:** En doğru ölçüm için telefonun motosiklet üzerinde dikey ve sağlam bir şekilde monte edilmesi önerilir.
