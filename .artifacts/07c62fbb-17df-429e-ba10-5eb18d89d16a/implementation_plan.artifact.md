@@ -1,55 +1,29 @@
-# Advanced Analytics, Sessions & Dual Distance Tracking Plan
+# Fix App Crashing on Startup Plan
 
-This plan outlines the integration of ride session tracking, Vico-based charts, and dual distance measurement (Motorcycle Odometer vs. GPS Calculation).
-
-## User Review Required
-
-> [!IMPORTANT]
-> - **Dual Distance:** We will track distance in two ways:
->   1. **Bike Data:** Using the motorcycle's internal odometer (PID `222503`).
->   2. **GPS Data:** Calculating the cumulative distance between GPS coordinates in real-time.
-> - **Session Management:** Users can rename sessions. Start/End timestamps and durations will be automatically recorded.
+This plan aims to resolve the "open and close" issue reported by the user, likely caused by Android 14+ foreground service requirements or database initialization.
 
 ## Proposed Changes
 
-### [Data] - Rich Session Model
-
-#### [MODIFY] [Session.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/data/Session.kt)
-Update entity with:
-- `totalDistanceBikeKm: Float`
-- `totalDistanceGpsKm: Float`
-- `maxCoolantTemp: Int`
-- `startOdometer: Long`
-- `endOdometer: Long`
-
-### [Core] - Tracking Logic
+### [Core] - Foreground Service Compatibility
 
 #### [MODIFY] [TelemetryService.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/TelemetryService.kt)
-- **Odometer:** Capture the bike's odometer reading at the start and end of each session.
-- **GPS Distance:** Use `Location.distanceTo()` to calculate the distance between the current and previous GPS points and accumulate it.
-- **Aggregates:** Maintain running max values for Speed, Lean Angle, and Coolant Temp.
+- Update `startForeground` to include the required service types for Android 14+ (`location` and `connectedDevice`).
+- Ensure all required permissions are checked before calling `startForeground`.
 
-#### [MODIFY] [BluetoothOBDManager.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/BluetoothOBDManager.kt)
-- Add PIDs: `222503` (Odometer) and `0105` (Coolant Temp).
-- Implement parsers for these values.
+### [Database] - Schema Integrity
 
-### [UI] - Analytics & Interactive Charts
+#### [MODIFY] [AppDatabase.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/data/AppDatabase.kt)
+- Verify `fallbackToDestructiveMigration` is correctly applied to prevent crashes after schema updates.
 
-#### [NEW] [AnalysisScreen.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/ui/AnalysisScreen.kt)
-- **Session List:** Show start/end times and total distance.
-- **Edit Name:** Allow users to rename the ride.
-- **Charts (Vico):**
-    - Combined Speed/RPM chart.
-    - Lean Angle (Left vs Right) distribution.
-    - Fuel Rate and Coolant Temp trend.
+### [UI] - Startup Stability
 
 #### [MODIFY] [MainActivity.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/MainActivity.kt)
-- Add "Analysis" (İstatistikler) to the bottom navigation bar.
+- Wrap potential crashing initializers (like `Identity` or `CredentialManager`) in safe checks.
+- Add an `UncaughtExceptionHandler` log to help identify the exact crash cause in the future.
 
 ## Verification Plan
 
 ### Manual Verification
-- Start a tracking session and ride (or simulate movement).
-- Verify that both GPS distance and Bike distance are being updated.
-- Stop the session and verify that all aggregates (Max Speed, Max Lean) are saved.
-- Navigate to the Analysis screen and ensure charts render with the recorded data.
+- Deploy to a physical device or emulator running Android 14+.
+- Verify the app stays open and the Main Screen is visible.
+- Click "Start Tracking" and ensure the foreground notification appears without crashing.

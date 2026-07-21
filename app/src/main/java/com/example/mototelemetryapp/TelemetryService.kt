@@ -66,7 +66,11 @@ class TelemetryService : Service() {
             .setOngoing(true)
             .build()
 
-        startForeground(1, notification)
+        startForeground(
+            1, 
+            notification, 
+            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+        )
 
         startLocationUpdates()
         orientationManager.start()
