@@ -18,5 +18,6 @@
     <string name="backup_error">Yedekleme hatası!</string>
     <string name="panel">Panel</string>
     <string name="history">Geçmiş</string>
+    <string name="analysis">İstatistikler</string>
     <string name="select_language">Dil</string>
 </resources>

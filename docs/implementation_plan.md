@@ -1,30 +1,55 @@
-# Testing Strategy Plan
+# Advanced Analytics, Sessions & Dual Distance Tracking Plan
 
-This plan outlines the creation of unit tests to verify the core logic of the Moto Telemetry application, specifically the data parsing from OBD2 responses and coordinate handling.
+This plan outlines the integration of ride session tracking, Vico-based charts, and dual distance measurement (Motorcycle Odometer vs. GPS Calculation).
 
 ## User Review Required
 
-> [!NOTE]
-> Since we cannot connect to a physical ELM327 adapter or a motorcycle in this environment, we will use **Unit Tests** with simulated data to verify that our parsers and logic work correctly.
+> [!IMPORTANT]
+> - **Dual Distance:** We will track distance in two ways:
+>   1. **Bike Data:** Using the motorcycle's internal odometer (PID `222503`).
+>   2. **GPS Data:** Calculating the cumulative distance between GPS coordinates in real-time.
+> - **Session Management:** Users can rename sessions. Start/End timestamps and durations will be automatically recorded.
 
 ## Proposed Changes
 
-### [Tests] - Core Logic Verification
+### [Data] - Rich Session Model
 
-#### [NEW] [OBDParsingTest.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/test/java/com/example/mototelemetryapp/OBDParsingTest.kt)
-Create unit tests to verify:
-- **RPM Parsing:** Input `"410C1AF8"` -> Expected result.
-- **Speed Parsing:** Input `"410D32"` -> Expected `50`.
-- **Gear Parsing:** Input `"6243F703"` -> Expected `3`.
-- **Throttle Parsing:** Input `"4111FF"` -> Expected `100`.
-- **Brake Parsing:** Input `"622B053C"` -> Expected pressure in bar.
-- **Lean Angle (Bike) Parsing:** Input `"62D10D01F4"` -> Expected `50.0` or similar signed 16-bit handling.
+#### [MODIFY] [Session.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/data/Session.kt)
+Update entity with:
+- `totalDistanceBikeKm: Float`
+- `totalDistanceGpsKm: Float`
+- `maxCoolantTemp: Int`
+- `startOdometer: Long`
+- `endOdometer: Long`
 
-#### [NEW] [SensorLogicTest.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/test/java/com/example/mototelemetryapp/SensorLogicTest.kt)
-Verify the mathematical formulas used for G-force and lean angle if they can be isolated from Android's `SensorManager`.
+### [Core] - Tracking Logic
+
+#### [MODIFY] [TelemetryService.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/TelemetryService.kt)
+- **Odometer:** Capture the bike's odometer reading at the start and end of each session.
+- **GPS Distance:** Use `Location.distanceTo()` to calculate the distance between the current and previous GPS points and accumulate it.
+- **Aggregates:** Maintain running max values for Speed, Lean Angle, and Coolant Temp.
+
+#### [MODIFY] [BluetoothOBDManager.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/BluetoothOBDManager.kt)
+- Add PIDs: `222503` (Odometer) and `0105` (Coolant Temp).
+- Implement parsers for these values.
+
+### [UI] - Analytics & Interactive Charts
+
+#### [NEW] [AnalysisScreen.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/ui/AnalysisScreen.kt)
+- **Session List:** Show start/end times and total distance.
+- **Edit Name:** Allow users to rename the ride.
+- **Charts (Vico):**
+    - Combined Speed/RPM chart.
+    - Lean Angle (Left vs Right) distribution.
+    - Fuel Rate and Coolant Temp trend.
+
+#### [MODIFY] [MainActivity.kt](file:///C:/Users/TKA/AndroidStudioProjects/MotoTelemetryApp/app/src/main/java/com/example/mototelemetryapp/MainActivity.kt)
+- Add "Analysis" (İstatistikler) to the bottom navigation bar.
 
 ## Verification Plan
 
-### Automated Tests
-- Run `./gradlew test` to execute all unit tests.
-- Ensure all tests pass.
+### Manual Verification
+- Start a tracking session and ride (or simulate movement).
+- Verify that both GPS distance and Bike distance are being updated.
+- Stop the session and verify that all aggregates (Max Speed, Max Lean) are saved.
+- Navigate to the Analysis screen and ensure charts render with the recorded data.

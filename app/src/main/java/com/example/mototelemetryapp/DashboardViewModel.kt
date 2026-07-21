@@ -9,6 +9,7 @@ import android.os.IBinder
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mototelemetryapp.data.AppDatabase
+import com.example.mototelemetryapp.data.Session
 import com.example.mototelemetryapp.data.TelemetryRecord
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,14 +50,27 @@ class DashboardViewModel : ViewModel() {
         }
     }
 
+    private val _sessions = MutableStateFlow<List<Session>>(emptyList())
+    val sessions = _sessions.asStateFlow()
+
     fun fetchHistory(context: Context) {
         viewModelScope.launch {
             val db = AppDatabase.getDatabase(context)
-            db.telemetryDao().getAllRecords().collect {
-                _history.value = it
+            db.telemetryDao().getAllSessions().collect {
+                _sessions.value = it
             }
         }
     }
+
+    fun renameSession(context: Context, session: Session, newName: String) {
+        viewModelScope.launch {
+            val db = AppDatabase.getDatabase(context)
+            db.telemetryDao().updateSession(session.copy(name = newName))
+        }
+    }
+
+    fun getRecordsForSession(context: Context, sessionId: Long) = 
+        AppDatabase.getDatabase(context).telemetryDao().getRecordsForSession(sessionId)
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {

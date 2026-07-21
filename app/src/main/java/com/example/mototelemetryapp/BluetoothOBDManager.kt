@@ -139,6 +139,20 @@ class BluetoothOBDManager(private val context: Context) {
                 
                 sendCommand("22D10D")
                 val leanBike = parseLeanBike(readResponse())
+                
+                // --- Coolant & Odometer (Standard & UDS) ---
+                sendCommand("0105")
+                val coolant = parseCoolant(readResponse())
+                
+                sendCommand("222503")
+                val odometer = parseOdometer(readResponse())
+                
+                // --- Fuel Data ---
+                sendCommand("015E")
+                val fuelRate = parseFuelRate(readResponse())
+                
+                sendCommand("012F")
+                val fuelLevel = parseFuelLevel(readResponse())
 
                 _obdData.value = mapOf(
                     "RPM" to rpm,
@@ -147,12 +161,60 @@ class BluetoothOBDManager(private val context: Context) {
                     "THROTTLE" to throttle,
                     "BRAKE_FRONT" to brakeFront,
                     "BRAKE_REAR" to brakeRear,
-                    "LEAN_BIKE" to leanBike
+                    "LEAN_BIKE" to leanBike,
+                    "COOLANT" to coolant,
+                    "ODOMETER" to odometer.toInt(), // Lossy for Map, but we'll use a better way later
+                    "FUEL_RATE" to (fuelRate * 100).toInt(), // Scale for Map
+                    "FUEL_LEVEL" to fuelLevel
                 )
                 
                 delay(100)
             }
         }
+    }
+
+    private fun parseCoolant(response: String): Int {
+        // 41 05 XX -> XX - 40
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains("4105")) {
+                val hex = clean.substringAfter("4105").take(2)
+                Integer.parseInt(hex, 16) - 40
+            } else 0
+        } catch (e: Exception) { 0 }
+    }
+
+    private fun parseOdometer(response: String): Long {
+        // 62 25 03 AA BB CC DD -> (AA*2^24 + BB*2^16 + CC*256 + DD)
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains("622503")) {
+                val hex = clean.substringAfter("622503").take(8)
+                java.lang.Long.parseLong(hex, 16)
+            } else 0L
+        } catch (e: Exception) { 0L }
+    }
+
+    private fun parseFuelRate(response: String): Float {
+        // 41 5E AA BB -> (AA*256 + BB) / 20
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains("415E")) {
+                val hex = clean.substringAfter("415E").take(4)
+                Integer.parseInt(hex, 16) / 20f
+            } else 0f
+        } catch (e: Exception) { 0f }
+    }
+
+    private fun parseFuelLevel(response: String): Int {
+        // 41 2F XX -> XX * 100 / 255
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains("412F")) {
+                val hex = clean.substringAfter("412F").take(2)
+                (Integer.parseInt(hex, 16) * 100) / 255
+            } else 0
+        } catch (e: Exception) { 0 }
     }
 
     internal fun parseLeanBike(response: String): Int {

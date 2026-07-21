@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,6 +34,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.mototelemetryapp.ui.AnalysisScreen
 import com.example.mototelemetryapp.ui.DashboardScreen
 import com.example.mototelemetryapp.ui.HistoryScreen
 import com.example.mototelemetryapp.ui.theme.MotoTelemetryAppTheme
@@ -108,6 +110,12 @@ class MainActivity : ComponentActivity() {
                                     selected = false,
                                     onClick = { navController.navigate("history") }
                                 )
+                                NavigationBarItem(
+                                    icon = { Icon(Icons.Default.QueryStats, contentDescription = null) },
+                                    label = { Text(stringResource(R.string.analysis)) },
+                                    selected = false,
+                                    onClick = { navController.navigate("analysis") }
+                                )
                             }
                         }
                     }
@@ -129,6 +137,18 @@ class MainActivity : ComponentActivity() {
                                 composable("history") {
                                     val history by dashboardViewModel.history.collectAsState()
                                     HistoryScreen(records = history)
+                                }
+                                composable("analysis") {
+                                    val sessions by dashboardViewModel.sessions.collectAsState()
+                                    AnalysisScreen(
+                                        sessions = sessions,
+                                        onRenameSession = { session, newName ->
+                                            dashboardViewModel.renameSession(context, session, newName)
+                                        },
+                                        getRecords = { sessionId ->
+                                            dashboardViewModel.getRecordsForSession(context, sessionId)
+                                        }
+                                    )
                                 }
                             }
                         } else {

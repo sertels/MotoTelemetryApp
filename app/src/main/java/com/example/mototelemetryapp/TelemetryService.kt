@@ -14,20 +14,15 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.mototelemetryapp.data.AppDatabase
+import com.example.mototelemetryapp.data.Session
 import com.example.mototelemetryapp.data.TelemetryRecord
-import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationCallback
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationResult
-import com.google.android.gms.location.Priority
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
+import com.google.android.gms.location.*
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.*
+import kotlin.math.max
 
 class TelemetryService : Service() {
 
@@ -40,8 +35,15 @@ class TelemetryService : Service() {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     
     private var lastLocation: Location? = null
+    private var currentSessionId: Long = -1
+    private var totalGpsDistanceMeters: Float = 0f
+    private var startOdometer: Long = 0
+    private var maxSpeed: Int = 0
+    private var maxLeanLeft: Float = 0f
+    private var maxLeanRight: Float = 0f
+    private var maxCoolantTemp: Int = 0
 
-    // Canlı veriyi UI'ya aktarmak için Flow
+    // Live data for UI
     private val _currentTelemetry = MutableStateFlow<TelemetryRecord?>(null)
     val currentTelemetry = _currentTelemetry.asStateFlow()
 
@@ -81,7 +83,14 @@ class TelemetryService : Service() {
             locationRequest,
             object : LocationCallback() {
                 override fun onLocationResult(locationResult: LocationResult) {
-                    lastLocation = locationResult.lastLocation
+                    val newLocation = locationResult.lastLocation ?: return
+                    
+                    // Accumulate distance
+                    lastLocation?.let {
+                        totalGpsDistanceMeters += it.distanceTo(newLocation)
+                    }
+                    
+                    lastLocation = newLocation
                 }
             },
             mainLooper
@@ -90,47 +99,82 @@ class TelemetryService : Service() {
 
     private fun startTelemetryTracking() {
         serviceScope.launch {
-            // OBD2 Bağlantısını başlat
+            // 1. Create a new Session
+            val startTime = System.currentTimeMillis()
+            val dateStr = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(startTime))
+            val session = Session(
+                name = "Ride - $dateStr",
+                startTime = startTime
+            )
+            currentSessionId = db.telemetryDao().insertSession(session)
+
+            // 2. Start OBD2 Connection
             val connected = bluetoothOBDManager.connect("OBDII")
             if (connected) {
-                // Kayıt Döngüsü (Her 200ms'de bir - 5Hz)
+                // Initial Odometer
+                startOdometer = (bluetoothOBDManager.obdData.value["ODOMETER"] ?: 0).toLong()
+
                 while (true) {
                     val obdData = bluetoothOBDManager.obdData.value
-                    val lean = orientationManager.leanAngle.value
-                    val gForce = orientationManager.gForce.value
+                    val leanPhone = orientationManager.leanAngle.value
+                    val leanBike = (obdData["LEAN_BIKE"] ?: 0).toFloat()
+                    val coolant = obdData["COOLANT"] ?: 0
+                    val speed = obdData["SPEED"] ?: 0
                     
+                    // Update aggregates
+                    maxSpeed = max(maxSpeed, speed)
+                    maxCoolantTemp = max(maxCoolantTemp, coolant)
+                    if (leanBike < 0) maxLeanLeft = max(maxLeanLeft, -leanBike) else maxLeanRight = max(maxLeanRight, leanBike)
+
                     val record = TelemetryRecord(
+                        sessionId = currentSessionId,
                         timestamp = System.currentTimeMillis(),
-                        speed = obdData["SPEED"] ?: 0,
+                        speed = speed,
                         rpm = obdData["RPM"] ?: 0,
                         gear = obdData["GEAR"] ?: 0,
                         throttle = obdData["THROTTLE"] ?: 0,
                         brakeFront = obdData["BRAKE_FRONT"] ?: 0,
                         brakeRear = obdData["BRAKE_REAR"] ?: 0,
-                        leanAnglePhone = lean,
-                        leanAngleBike = (obdData["LEAN_BIKE"] ?: 0).toFloat(),
-                        gForce = gForce,
+                        leanAnglePhone = leanPhone,
+                        leanAngleBike = leanBike,
+                        gForce = orientationManager.gForce.value,
+                        fuelRate = (obdData["FUEL_RATE"] ?: 0) / 100f,
+                        fuelLevel = obdData["FUEL_LEVEL"] ?: 0,
+                        coolantTemp = coolant,
+                        altitude = lastLocation?.altitude ?: 0.0,
                         latitude = lastLocation?.latitude ?: 0.0,
                         longitude = lastLocation?.longitude ?: 0.0
                     )
                     
                     _currentTelemetry.value = record
                     db.telemetryDao().insertRecord(record)
-                    Log.d("TelemetryService", "Kayıt: Hız=${record.speed}, Vites=${record.gear}, Yatış(P)=${record.leanAnglePhone}, Yatış(B)=${record.leanAngleBike}")
-                    
                     delay(200)
                 }
             } else {
-                Log.e("TelemetryService", "OBD2 bağlantısı kurulamadı.")
+                Log.e("TelemetryService", "OBD2 connection failed.")
             }
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        bluetoothOBDManager.disconnect()
-        orientationManager.stop()
-        serviceScope.cancel()
+        serviceScope.launch {
+            val endOdometer = (bluetoothOBDManager.obdData.value["ODOMETER"] ?: startOdometer.toInt()).toLong()
+            val finalSession = db.telemetryDao().getSessionById(currentSessionId)?.copy(
+                endTime = System.currentTimeMillis(),
+                totalDistanceGpsKm = totalGpsDistanceMeters / 1000f,
+                totalDistanceBikeKm = if (endOdometer > startOdometer) (endOdometer - startOdometer).toFloat() else 0f,
+                maxSpeed = maxSpeed,
+                maxLeanLeft = maxLeanLeft,
+                maxLeanRight = maxLeanRight,
+                maxCoolantTemp = maxCoolantTemp
+            )
+            finalSession?.let { db.telemetryDao().updateSession(it) }
+            
+            bluetoothOBDManager.disconnect()
+            orientationManager.stop()
+            serviceScope.cancel()
+        }
     }
 
     private fun createNotificationChannel() {

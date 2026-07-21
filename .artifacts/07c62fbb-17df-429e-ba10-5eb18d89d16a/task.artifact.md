@@ -1,4 +1,8 @@
-- [x] Refactor `BluetoothOBDManager.kt` to make parsers testable (internal)
-- [x] Create `OBDParsingTest.kt` with sample OBD2 responses
-- [x] Run unit tests and verify results
-- [x] Update `walkthrough.artifact.md` with testing outcomes
+- [ ] Add Vico charting dependencies to `build.gradle.kts`
+- [ ] Create `Session.kt` entity and update `TelemetryRecord.kt`
+- [ ] Update `TelemetryDao.kt` and `AppDatabase.kt` (v6)
+- [ ] Implement fuel data querying (015E, 012F) in `BluetoothOBDManager.kt`
+- [ ] Update `TelemetryService.kt` to manage ride sessions
+- [ ] Create `AnalysisScreen.kt` with Vico charts
+- [ ] Add "Analysis" tab to `MainActivity.kt` navigation
+- [ ] Verify session grouping and chart rendering
