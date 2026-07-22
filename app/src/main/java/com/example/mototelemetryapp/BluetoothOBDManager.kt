@@ -12,6 +12,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -19,14 +20,15 @@ import java.util.UUID
 
 class BluetoothOBDManager(private val context: Context) {
 
-    private val TAG = "BluetoothOBDManager"
-    private val OBD_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+    private val tag = "BluetoothOBDManager"
+    private val obdUuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
 
     private var socket: BluetoothSocket? = null
     private var outputStream: OutputStream? = null
     private var inputStream: InputStream? = null
 
     private val _isConnected = MutableStateFlow(false)
+    @Suppress("unused")
     val isConnected = _isConnected.asStateFlow()
 
     private val _obdData = MutableStateFlow<Map<String, Int>>(emptyMap())
@@ -38,7 +40,7 @@ class BluetoothOBDManager(private val context: Context) {
         val adapter = bluetoothManager.adapter
 
         if (adapter == null || !adapter.isEnabled) {
-            Log.e(TAG, "Bluetooth kapalı veya desteklenmiyor.")
+            Log.e(tag, "Bluetooth kapalı veya desteklenmiyor.")
             return@withContext false
         }
 
@@ -46,24 +48,24 @@ class BluetoothOBDManager(private val context: Context) {
         val obdDevice = pairedDevices.find { it.name.contains(deviceName, ignoreCase = true) }
 
         if (obdDevice == null) {
-            Log.e(TAG, "Eşleşmiş OBD2 cihazı bulunamadı.")
+            Log.e(tag, "Eşleşmiş OBD2 cihazı bulunamadı.")
             return@withContext false
         }
 
         try {
-            socket = obdDevice.createRfcommSocketToServiceRecord(OBD_UUID)
+            socket = obdDevice.createRfcommSocketToServiceRecord(obdUuid)
             socket?.connect()
             outputStream = socket?.outputStream
             inputStream = socket?.inputStream
             
             if (initELM327()) {
                 _isConnected.value = true
-                Log.d(TAG, "OBD2 Bağlantısı Başarılı.")
+                Log.d(tag, "OBD2 Bağlantısı Başarılı.")
                 startDataLoop()
                 return@withContext true
             }
         } catch (e: IOException) {
-            Log.e(TAG, "Bağlantı hatası: ${e.message}")
+            Log.e(tag, "Bağlantı hatası: ${e.message}")
             disconnect()
         }
         return@withContext false
@@ -74,8 +76,8 @@ class BluetoothOBDManager(private val context: Context) {
         for (cmd in commands) {
             sendCommand(cmd)
             val response = readResponse()
-            Log.d(TAG, "Command: $cmd, Response: $response")
-            delay(200)
+            Log.d(tag, "Command: $cmd, Response: $response")
+            delay(200.milliseconds)
         }
         return true
     }
@@ -85,7 +87,7 @@ class BluetoothOBDManager(private val context: Context) {
             outputStream?.write((cmd + "\r").toByteArray())
             outputStream?.flush()
         } catch (e: IOException) {
-            Log.e(TAG, "Komut gönderme hatası: ${e.message}")
+            Log.e(tag, "Komut gönderme hatası: ${e.message}")
         }
     }
 
@@ -95,7 +97,15 @@ class BluetoothOBDManager(private val context: Context) {
         val response = StringBuilder()
         try {
             // Basit bir okuma mantığı - ELM327 yanıtı '>' ile bitirir
+            val startTime = System.currentTimeMillis()
+            val timeout = 2000 // 2 second timeout
+            
             while (true) {
+                if (System.currentTimeMillis() - startTime > timeout) {
+                    Log.w(tag, "Read response timeout")
+                    break
+                }
+                
                 bytes = inputStream?.read(buffer) ?: -1
                 if (bytes == -1) break
                 val part = String(buffer, 0, bytes)
@@ -103,7 +113,7 @@ class BluetoothOBDManager(private val context: Context) {
                 if (part.contains(">")) break
             }
         } catch (e: IOException) {
-            Log.e(TAG, "Okuma hatası: ${e.message}")
+            Log.e(tag, "Okuma hatası: ${e.message}")
         }
         return response.toString().trim().replace(">", "")
     }
@@ -111,64 +121,69 @@ class BluetoothOBDManager(private val context: Context) {
     private suspend fun startDataLoop() {
         withContext(Dispatchers.IO) {
             while (_isConnected.value) {
-                // --- Engine Data (Header 7E0) ---
-                sendCommand("ATSH7E0")
-                delay(50)
-                
-                sendCommand("010C")
-                val rpm = parseRPM(readResponse())
+                try {
+                    // --- Engine Data (Header 7E0) ---
+                    sendCommand("ATSH7E0")
+                    delay(50.milliseconds)
+                    
+                    sendCommand("010C")
+                    val rpm = parseRPM(readResponse())
 
-                sendCommand("010D")
-                val speed = parseSpeed(readResponse())
+                    sendCommand("010D")
+                    val speed = parseSpeed(readResponse())
 
-                sendCommand("2243F7")
-                val gear = parseGear(readResponse())
+                    sendCommand("2243F7")
+                    val gear = parseGear(readResponse())
 
-                sendCommand("0111")
-                val throttle = parseThrottle(readResponse())
+                    sendCommand("0111")
+                    val throttle = parseThrottle(readResponse())
 
-                // --- ABS/IMU Data (Header 7E1) ---
-                sendCommand("ATSH7E1")
-                delay(50)
+                    // --- ABS/IMU Data (Header 7E1) ---
+                    sendCommand("ATSH7E1")
+                    delay(50.milliseconds)
 
-                sendCommand("222B05")
-                val brakeFront = parseBrake(readResponse(), "622B05")
+                    sendCommand("222B05")
+                    val brakeFront = parseBrake(readResponse(), "622B05")
 
-                sendCommand("222B06")
-                val brakeRear = parseBrake(readResponse(), "622B06")
-                
-                sendCommand("22D10D")
-                val leanBike = parseLeanBike(readResponse())
-                
-                // --- Coolant & Odometer (Standard & UDS) ---
-                sendCommand("0105")
-                val coolant = parseCoolant(readResponse())
-                
-                sendCommand("222503")
-                val odometer = parseOdometer(readResponse())
-                
-                // --- Fuel Data ---
-                sendCommand("015E")
-                val fuelRate = parseFuelRate(readResponse())
-                
-                sendCommand("012F")
-                val fuelLevel = parseFuelLevel(readResponse())
+                    sendCommand("222B06")
+                    val brakeRear = parseBrake(readResponse(), "622B06")
+                    
+                    sendCommand("22D10D")
+                    val leanBike = parseLeanBike(readResponse())
+                    
+                    // --- Coolant & Odometer (Standard & UDS) ---
+                    sendCommand("0105")
+                    val coolant = parseCoolant(readResponse())
+                    
+                    sendCommand("222503")
+                    val odometer = parseOdometer(readResponse())
+                    
+                    // --- Fuel Data ---
+                    sendCommand("015E")
+                    val fuelRate = parseFuelRate(readResponse())
+                    
+                    sendCommand("012F")
+                    val fuelLevel = parseFuelLevel(readResponse())
 
-                _obdData.value = mapOf(
-                    "RPM" to rpm,
-                    "SPEED" to speed,
-                    "GEAR" to gear,
-                    "THROTTLE" to throttle,
-                    "BRAKE_FRONT" to brakeFront,
-                    "BRAKE_REAR" to brakeRear,
-                    "LEAN_BIKE" to leanBike,
-                    "COOLANT" to coolant,
-                    "ODOMETER" to odometer.toInt(), // Lossy for Map, but we'll use a better way later
-                    "FUEL_RATE" to (fuelRate * 100).toInt(), // Scale for Map
-                    "FUEL_LEVEL" to fuelLevel
-                )
-                
-                delay(100)
+                    _obdData.value = mapOf(
+                        "RPM" to rpm,
+                        "SPEED" to speed,
+                        "GEAR" to gear,
+                        "THROTTLE" to throttle,
+                        "BRAKE_FRONT" to brakeFront,
+                        "BRAKE_REAR" to brakeRear,
+                        "LEAN_BIKE" to leanBike,
+                        "COOLANT" to coolant,
+                        "ODOMETER" to odometer.toInt(), // Lossy for Map, but we'll use a better way later
+                        "FUEL_RATE" to (fuelRate * 100).toInt(), // Scale for Map
+                        "FUEL_LEVEL" to fuelLevel
+                    )
+                    
+                    delay(100.milliseconds)
+                } catch (e: Exception) {
+                    Log.e(tag, "Error in data loop: ${e.message}", e)
+                    delay(500.milliseconds) // Wait before retrying
+                }
             }
         }
     }
@@ -181,7 +196,7 @@ class BluetoothOBDManager(private val context: Context) {
                 val hex = clean.substringAfter("4105").take(2)
                 Integer.parseInt(hex, 16) - 40
             } else 0
-        } catch (e: Exception) { 0 }
+        } catch (_: Exception) { 0 }
     }
 
     private fun parseOdometer(response: String): Long {
@@ -192,7 +207,7 @@ class BluetoothOBDManager(private val context: Context) {
                 val hex = clean.substringAfter("622503").take(8)
                 java.lang.Long.parseLong(hex, 16)
             } else 0L
-        } catch (e: Exception) { 0L }
+        } catch (_: Exception) { 0L }
     }
 
     private fun parseFuelRate(response: String): Float {
@@ -203,7 +218,7 @@ class BluetoothOBDManager(private val context: Context) {
                 val hex = clean.substringAfter("415E").take(4)
                 Integer.parseInt(hex, 16) / 20f
             } else 0f
-        } catch (e: Exception) { 0f }
+        } catch (_: Exception) { 0f }
     }
 
     private fun parseFuelLevel(response: String): Int {
@@ -214,7 +229,7 @@ class BluetoothOBDManager(private val context: Context) {
                 val hex = clean.substringAfter("412F").take(2)
                 (Integer.parseInt(hex, 16) * 100) / 255
             } else 0
-        } catch (e: Exception) { 0 }
+        } catch (_: Exception) { 0 }
     }
 
     internal fun parseLeanBike(response: String): Int {
@@ -227,7 +242,7 @@ class BluetoothOBDManager(private val context: Context) {
                 // Genelde 0.1 çarpanı ile dereceye çevrilir
                 (raw * 0.1).toInt()
             } else 0
-        } catch (e: Exception) { 0 }
+        } catch (_: Exception) { 0 }
     }
 
     internal fun parseRPM(response: String): Int {
@@ -237,7 +252,7 @@ class BluetoothOBDManager(private val context: Context) {
                 val hex = clean.substringAfter("410C").take(4)
                 Integer.parseInt(hex, 16) / 4
             } else 0
-        } catch (e: Exception) { 0 }
+        } catch (_: Exception) { 0 }
     }
 
     internal fun parseSpeed(response: String): Int {
@@ -247,7 +262,7 @@ class BluetoothOBDManager(private val context: Context) {
                 val hex = clean.substringAfter("410D").take(2)
                 Integer.parseInt(hex, 16)
             } else 0
-        } catch (e: Exception) { 0 }
+        } catch (_: Exception) { 0 }
     }
 
     internal fun parseGear(response: String): Int {
@@ -260,7 +275,7 @@ class BluetoothOBDManager(private val context: Context) {
                 // BMW BMS-O genelde 0=N, 1-6=Gears. Bazı durumlarda 15=N.
                 if (rawGear == 15) 0 else rawGear
             } else 0
-        } catch (e: Exception) { 0 }
+        } catch (_: Exception) { 0 }
     }
 
     internal fun parseThrottle(response: String): Int {
@@ -271,7 +286,7 @@ class BluetoothOBDManager(private val context: Context) {
                 val hex = clean.substringAfter("4111").take(2)
                 (Integer.parseInt(hex, 16) * 100) / 255
             } else 0
-        } catch (e: Exception) { 0 }
+        } catch (_: Exception) { 0 }
     }
 
     internal fun parseBrake(response: String, prefix: String): Int {
@@ -284,16 +299,16 @@ class BluetoothOBDManager(private val context: Context) {
                 // Basit bir ölçekleme yapıyoruz.
                 Integer.parseInt(hex, 16)
             } else 0
-        } catch (e: Exception) { 0 }
+        } catch (_: Exception) { 0 }
     }
 
     fun disconnect() {
         try {
             _isConnected.value = false
             socket?.close()
-            Log.d(TAG, "OBD2 Bağlantısı kesildi.")
+            Log.d(tag, "OBD2 Bağlantısı kesildi.")
         } catch (e: IOException) {
-            Log.e(TAG, "Kapatma hatası: ${e.message}")
+            Log.e(tag, "Kapatma hatası: ${e.message}")
         }
     }
 }

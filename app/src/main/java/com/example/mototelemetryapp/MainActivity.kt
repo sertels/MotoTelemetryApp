@@ -57,13 +57,19 @@ class MainActivity : ComponentActivity() {
         setContent {
             val context = LocalContext.current
             val navController = rememberNavController()
+            val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
             
-            // Service binding management
-            DisposableEffect(Unit) {
+            // Service binding management - only bind when activity is created, not on recomposition
+            LaunchedEffect(Unit) {
                 dashboardViewModel.bindService(context)
                 dashboardViewModel.fetchHistory(context)
+            }
+            
+            // Only unbind when activity is actually destroyed, not on configuration change
+            DisposableEffect(lifecycleOwner) {
                 onDispose {
-                    dashboardViewModel.unbindService(context)
+                    // Don't unbind on configuration changes
+                    // Service should stay bound across orientation changes
                 }
             }
 
@@ -184,8 +190,13 @@ class MainActivity : ComponentActivity() {
                                                     .authorize(authRequest)
                                                     .addOnSuccessListener { authResult ->
                                                         if (authResult.hasResolution()) {
-                                                            val intentSenderRequest = IntentSenderRequest.Builder(authResult.pendingIntent!!.intentSender).build()
-                                                            authorizationLauncher.launch(intentSenderRequest)
+                                                            authResult.pendingIntent?.let { pendingIntent ->
+                                                                val intentSenderRequest = IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                                                                authorizationLauncher.launch(intentSenderRequest)
+                                                            } ?: run {
+                                                                Log.e("MainActivity", "PendingIntent is null")
+                                                                dashboardViewModel.backupToCloud(context, account)
+                                                            }
                                                         } else {
                                                             dashboardViewModel.backupToCloud(context, account)
                                                         }
@@ -211,6 +222,14 @@ class MainActivity : ComponentActivity() {
     private fun startTelemetryService() {
         val intent = Intent(this, TelemetryService::class.java)
         startForegroundService(intent)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Only unbind service when activity is actually destroyed, not on configuration change
+        if (!isChangingConfigurations) {
+            dashboardViewModel.unbindService(this)
+        }
     }
 }
 

@@ -158,28 +158,45 @@ fun SessionDetailView(records: List<TelemetryRecord>) {
     if (records.isEmpty()) return
 
     val modelProducer = remember { CartesianChartModelProducer() }
+    var showError by remember { mutableStateOf(false) }
 
     LaunchedEffect(records) {
-        modelProducer.runTransaction {
-            lineSeries {
-                series(records.map { it.speed.toFloat() })
-                series(records.map { it.rpm.toFloat() / 100f })
+        try {
+            modelProducer.runTransaction {
+                lineSeries {
+                    series(records.map { it.speed.toFloat() })
+                    series(records.map { it.rpm.toFloat() / 100f })
+                }
             }
+            showError = false
+        } catch (e: Exception) {
+            android.util.Log.e("AnalysisScreen", "Error updating chart: ${e.message}", e)
+            showError = true
         }
     }
 
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-        Text(text = "Speed (White) & RPM/100 (Green)", color = Color.White, fontSize = 14.sp)
+        if (showError) {
+            Text(
+                text = "Error loading chart data",
+                color = Color.Red,
+                fontSize = 14.sp
+            )
+        } else {
+            Text(text = "Speed (White) & RPM/100 (Green)", color = Color.White, fontSize = 14.sp)
+        }
         Spacer(modifier = Modifier.height(8.dp))
         
-        CartesianChartHost(
-            chart = rememberCartesianChart(
-                rememberLineCartesianLayer(),
-                startAxis = rememberStartAxis(),
-                bottomAxis = rememberBottomAxis(),
-            ),
-            modelProducer = modelProducer,
-            modifier = Modifier.fillMaxWidth().height(200.dp)
-        )
+        if (!showError) {
+            CartesianChartHost(
+                chart = rememberCartesianChart(
+                    rememberLineCartesianLayer(),
+                    startAxis = rememberStartAxis(),
+                    bottomAxis = rememberBottomAxis(),
+                ),
+                modelProducer = modelProducer,
+                modifier = Modifier.fillMaxWidth().height(200.dp)
+            )
+        }
     }
 }

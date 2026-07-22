@@ -1,0 +1,6 @@
+- [x] Update `libs.versions.toml` with KSP version and plugin
+- [x] Update root `build.gradle.kts` to include KSP plugin
+- [x] Update `:app/build.gradle.kts` to apply KSP and use it for Room
+- [x] Update Room version to `2.8.4` (to fix `unexpected jvm signature V` with KSP2)
+- [x] Run Gradle Sync
+- [x] Build the project and verify fix
