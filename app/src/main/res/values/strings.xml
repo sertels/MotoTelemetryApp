@@ -23,4 +23,9 @@
     <string name="lock_rotation">Lock screen rotation</string>
     <string name="unlock_rotation">Unlock screen rotation</string>
     <string name="calibrate_angle">Calibrate lean angle</string>
+    <string name="recording_status">Recording…</string>
+    <string name="go_to_panel">Go to Panel</string>
+    <string name="delete_session">Delete session</string>
+    <string name="lean_source_phone">PHONE</string>
+    <string name="lean_source_bike">BIKE</string>
 </resources>

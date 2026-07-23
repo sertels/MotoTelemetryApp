@@ -36,6 +36,15 @@ class DashboardViewModel : ViewModel() {
     private val _backupStatus = MutableStateFlow<String?>(null)
     val backupStatus = _backupStatus.asStateFlow()
 
+    // True while the service is (or is presumed to be) actively recording a ride,
+    // independent of whether the UI is currently bound to it.
+    private val _isTrackingActive = MutableStateFlow(false)
+    val isTrackingActive = _isTrackingActive.asStateFlow()
+
+    fun setTrackingActive(active: Boolean) {
+        _isTrackingActive.value = active
+    }
+
     // Cleared in unbindService()/onCleared(), so this never outlives the ViewModel's binding.
     @SuppressLint("StaticFieldLeak")
     private var telemetryService: TelemetryService? = null
@@ -72,6 +81,13 @@ class DashboardViewModel : ViewModel() {
         }
     }
 
+    fun deleteSession(context: Context, session: Session) {
+        viewModelScope.launch {
+            val db = AppDatabase.getDatabase(context)
+            db.telemetryDao().deleteSession(session)
+        }
+    }
+
     fun getRecordsForSession(context: Context, sessionId: Long) = 
         AppDatabase.getDatabase(context).telemetryDao().getRecordsForSession(sessionId)
 
@@ -80,6 +96,7 @@ class DashboardViewModel : ViewModel() {
             val binder = service as TelemetryService.LocalBinder
             telemetryService = binder.getService()
             _isServiceBound.value = true
+            _isTrackingActive.value = true
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -88,9 +105,12 @@ class DashboardViewModel : ViewModel() {
         }
     }
 
-    fun bindService(context: Context) {
+    // autoCreate = false only attaches to an already-running (started) service instead of
+    // silently spinning up an inert one that never had onStartCommand (and its sensor loop) run.
+    fun bindService(context: Context, autoCreate: Boolean = true) {
         val intent = Intent(context, TelemetryService::class.java)
-        context.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+        val flags = if (autoCreate) Context.BIND_AUTO_CREATE else 0
+        context.bindService(intent, connection, flags)
     }
 
     fun unbindService(context: Context) {

@@ -1,6 +1,7 @@
 package com.example.mototelemetryapp.data
 
 import androidx.room.Dao
+import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
@@ -14,6 +15,10 @@ interface TelemetryDao {
 
     @Update
     suspend fun updateSession(session: Session)
+
+    // Cascades to that session's telemetry_records via the FK's onDelete = CASCADE.
+    @Delete
+    suspend fun deleteSession(session: Session)
 
     @Query("SELECT * FROM sessions ORDER BY startTime DESC")
     fun getAllSessions(): Flow<List<Session>>

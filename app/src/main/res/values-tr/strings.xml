@@ -23,4 +23,9 @@
     <string name="lock_rotation">Ekran döndürmeyi kilitle</string>
     <string name="unlock_rotation">Ekran döndürme kilidini aç</string>
     <string name="calibrate_angle">Yatış açısını kalibre et</string>
+    <string name="recording_status">Kayıt ediliyor…</string>
+    <string name="go_to_panel">Panele Git</string>
+    <string name="delete_session">Kaydı sil</string>
+    <string name="lean_source_phone">TEL</string>
+    <string name="lean_source_bike">MOTO</string>
 </resources>

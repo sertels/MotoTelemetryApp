@@ -146,59 +146,58 @@ class TelemetryService : Service() {
                 )
                 currentSessionId = database.telemetryDao().insertSession(session)
 
-                // 2. Start OBD2 Connection
+                // 2. Start OBD2 Connection (best-effort; phone sensors keep streaming even if this fails)
                 val connected = obdManager.connect("OBDII")
                 if (connected) {
-                    // Initial Odometer
                     startOdometer = (obdManager.obdData.value["ODOMETER"] ?: 0).toLong()
-
-                    while (isActive) {
-                        try {
-                            val obdData = obdManager.obdData.value
-                            val leanPhone = orientManager.leanAngle.value
-                            val leanBike = (obdData["LEAN_BIKE"] ?: 0).toFloat()
-                            val coolant = obdData["COOLANT"] ?: 0
-                            val speed = obdData["SPEED"] ?: 0
-                            val fuelRate = (obdData["FUEL_RATE"] ?: 0) / 100f
-                            
-                            // Update aggregates
-                            maxSpeed = max(maxSpeed, speed)
-                            maxCoolantTemp = max(maxCoolantTemp, coolant)
-                            if (leanBike < 0) maxLeanLeft = max(maxLeanLeft, -leanBike) else maxLeanRight = max(maxLeanRight, leanBike)
-                            
-                            // Integrate fuel consumption (Rate is Liters/Hour, interval is 0.2s)
-                            totalFuelConsumedLiters += (fuelRate / 3600f) * 0.2f
-
-                            val record = TelemetryRecord(
-                                sessionId = currentSessionId,
-                                timestamp = System.currentTimeMillis(),
-                                speed = speed,
-                                rpm = obdData["RPM"] ?: 0,
-                                gear = obdData["GEAR"] ?: 0,
-                                throttle = obdData["THROTTLE"] ?: 0,
-                                brakeFront = obdData["BRAKE_FRONT"] ?: 0,
-                                brakeRear = obdData["BRAKE_REAR"] ?: 0,
-                                leanAnglePhone = leanPhone,
-                                leanAngleBike = leanBike,
-                                gForce = orientManager.gForce.value,
-                                fuelRate = fuelRate,
-                                fuelLevel = obdData["FUEL_LEVEL"] ?: 0,
-                                coolantTemp = coolant,
-                                altitude = lastLocation?.altitude ?: 0.0,
-                                latitude = lastLocation?.latitude ?: 0.0,
-                                longitude = lastLocation?.longitude ?: 0.0
-                            )
-                            
-                            _currentTelemetry.value = record
-                            database.telemetryDao().insertRecord(record)
-                            delay(200.milliseconds)
-                        } catch (e: Exception) {
-                            Log.e("TelemetryService", "Error in telemetry loop: ${e.message}", e)
-                            delay(1000.milliseconds) // Wait before retrying
-                        }
-                    }
                 } else {
-                    Log.e("TelemetryService", "OBD2 connection failed.")
+                    Log.e("TelemetryService", "OBD2 connection failed; continuing with phone sensors only.")
+                }
+
+                while (isActive) {
+                    try {
+                        val obdData = obdManager.obdData.value
+                        val leanPhone = orientManager.leanAngle.value
+                        val leanBike = (obdData["LEAN_BIKE"] ?: 0).toFloat()
+                        val coolant = obdData["COOLANT"] ?: 0
+                        val speed = obdData["SPEED"] ?: 0
+                        val fuelRate = (obdData["FUEL_RATE"] ?: 0) / 100f
+
+                        // Update aggregates
+                        maxSpeed = max(maxSpeed, speed)
+                        maxCoolantTemp = max(maxCoolantTemp, coolant)
+                        if (leanBike < 0) maxLeanLeft = max(maxLeanLeft, -leanBike) else maxLeanRight = max(maxLeanRight, leanBike)
+
+                        // Integrate fuel consumption (Rate is Liters/Hour, interval is 0.2s)
+                        totalFuelConsumedLiters += (fuelRate / 3600f) * 0.2f
+
+                        val record = TelemetryRecord(
+                            sessionId = currentSessionId,
+                            timestamp = System.currentTimeMillis(),
+                            speed = speed,
+                            rpm = obdData["RPM"] ?: 0,
+                            gear = obdData["GEAR"] ?: 0,
+                            throttle = obdData["THROTTLE"] ?: 0,
+                            brakeFront = obdData["BRAKE_FRONT"] ?: 0,
+                            brakeRear = obdData["BRAKE_REAR"] ?: 0,
+                            leanAnglePhone = leanPhone,
+                            leanAngleBike = leanBike,
+                            gForce = orientManager.gForce.value,
+                            fuelRate = fuelRate,
+                            fuelLevel = obdData["FUEL_LEVEL"] ?: 0,
+                            coolantTemp = coolant,
+                            altitude = lastLocation?.altitude ?: 0.0,
+                            latitude = lastLocation?.latitude ?: 0.0,
+                            longitude = lastLocation?.longitude ?: 0.0
+                        )
+
+                        _currentTelemetry.value = record
+                        database.telemetryDao().insertRecord(record)
+                        delay(200.milliseconds)
+                    } catch (e: Exception) {
+                        Log.e("TelemetryService", "Error in telemetry loop: ${e.message}", e)
+                        delay(1000.milliseconds) // Wait before retrying
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("TelemetryService", "Fatal error in startTelemetryTracking: ${e.message}", e)

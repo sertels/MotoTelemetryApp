@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import com.example.mototelemetryapp.R
 import com.example.mototelemetryapp.data.Session
 import com.example.mototelemetryapp.data.TelemetryRecord
+import com.example.mototelemetryapp.ui.theme.TelemetryAccent
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottomAxis
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStartAxis
@@ -34,6 +36,7 @@ import java.util.*
 fun AnalysisScreen(
     sessions: List<Session>,
     onRenameSession: (Session, String) -> Unit,
+    onDeleteSession: (Session) -> Unit,
     getRecords: (Long) -> kotlinx.coroutines.flow.Flow<List<TelemetryRecord>>
 ) {
     var selectedSession by remember { mutableStateOf<Session?>(null) }
@@ -58,7 +61,8 @@ fun AnalysisScreen(
                     SessionCard(
                         session = session,
                         onClick = { selectedSession = session },
-                        onRename = { newName -> onRenameSession(session, newName) }
+                        onRename = { newName -> onRenameSession(session, newName) },
+                        onDelete = { onDeleteSession(session) }
                     )
                 }
             }
@@ -72,7 +76,7 @@ fun AnalysisScreen(
                 .background(Color(0xFF121212))
         ) {
             TextButton(onClick = { selectedSession = null }) {
-                Text("< Back to Sessions", color = Color(0xFF00E676))
+                Text("< Back to Sessions", color = TelemetryAccent)
             }
             Text(
                 text = selectedSession!!.name,
@@ -87,8 +91,9 @@ fun AnalysisScreen(
 }
 
 @Composable
-fun SessionCard(session: Session, onClick: () -> Unit, onRename: (String) -> Unit) {
+fun SessionCard(session: Session, onClick: () -> Unit, onRename: (String) -> Unit, onDelete: () -> Unit) {
     var showEditDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf(session.name) }
     
     val dateStr = remember(session.startTime) {
@@ -112,8 +117,17 @@ fun SessionCard(session: Session, onClick: () -> Unit, onRename: (String) -> Uni
                     Text(text = session.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Text(text = dateStr, color = Color.Gray, fontSize = 12.sp)
                 }
-                IconButton(onClick = { showEditDialog = true }) {
-                    Icon(Icons.Default.Edit, contentDescription = null, tint = Color.Gray)
+                Row {
+                    IconButton(onClick = { showEditDialog = true }) {
+                        Icon(Icons.Default.Edit, contentDescription = null, tint = Color.Gray)
+                    }
+                    IconButton(onClick = { showDeleteDialog = true }) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = stringResource(R.string.delete_session),
+                            tint = Color.Gray
+                        )
+                    }
                 }
             }
             
@@ -140,6 +154,23 @@ fun SessionCard(session: Session, onClick: () -> Unit, onRename: (String) -> Uni
                     onRename(newName)
                     showEditDialog = false
                 }) { Text("Save") }
+            }
+        )
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Delete Ride") },
+            text = { Text("This will permanently delete \"${session.name}\" and all its recorded data. This cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDelete()
+                    showDeleteDialog = false
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
             }
         )
     }
@@ -183,7 +214,7 @@ fun SessionDetailView(records: List<TelemetryRecord>) {
                 fontSize = 14.sp
             )
         } else {
-            Text(text = "Speed (White) & RPM/100 (Green)", color = Color.White, fontSize = 14.sp)
+            Text(text = "Speed (White) & RPM/100 (Cyan)", color = Color.White, fontSize = 14.sp)
         }
         Spacer(modifier = Modifier.height(8.dp))
         
