@@ -1,5 +1,6 @@
 package com.example.mototelemetryapp.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -22,6 +24,7 @@ import com.example.mototelemetryapp.R
 import com.example.mototelemetryapp.data.Session
 import com.example.mototelemetryapp.data.TelemetryRecord
 import com.example.mototelemetryapp.ui.theme.TelemetryAccent
+import kotlinx.coroutines.flow.Flow
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottomAxis
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStartAxis
@@ -62,7 +65,8 @@ fun AnalysisScreen(
                         session = session,
                         onClick = { selectedSession = session },
                         onRename = { newName -> onRenameSession(session, newName) },
-                        onDelete = { onDeleteSession(session) }
+                        onDelete = { onDeleteSession(session) },
+                        getRecords = getRecords
                     )
                 }
             }
@@ -76,7 +80,7 @@ fun AnalysisScreen(
                 .background(Color(0xFF121212))
         ) {
             TextButton(onClick = { selectedSession = null }) {
-                Text("< Back to Sessions", color = TelemetryAccent)
+                Text(stringResource(R.string.back_to_sessions), color = TelemetryAccent)
             }
             Text(
                 text = selectedSession!!.name,
@@ -91,10 +95,17 @@ fun AnalysisScreen(
 }
 
 @Composable
-fun SessionCard(session: Session, onClick: () -> Unit, onRename: (String) -> Unit, onDelete: () -> Unit) {
+fun SessionCard(
+    session: Session,
+    onClick: () -> Unit,
+    onRename: (String) -> Unit,
+    onDelete: () -> Unit,
+    getRecords: (Long) -> Flow<List<TelemetryRecord>>
+) {
     var showEditDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf(session.name) }
+    val records by getRecords(session.id).collectAsState(initial = emptyList())
     
     val dateStr = remember(session.startTime) {
         SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault()).format(Date(session.startTime))
@@ -131,13 +142,18 @@ fun SessionCard(session: Session, onClick: () -> Unit, onRename: (String) -> Uni
                 }
             }
             
+            if (records.size >= 2) {
+                Spacer(modifier = Modifier.height(10.dp))
+                SpeedSparkline(records = records)
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                StatItem(label = "BIKE", value = "%.1f km".format(session.totalDistanceBikeKm))
-                StatItem(label = "GPS", value = "%.1f km".format(session.totalDistanceGpsKm))
-                StatItem(label = "FUEL", value = "%.2f L".format(session.totalFuelLiters))
-                StatItem(label = "MAX LEAN", value = "%.0f°".format(maxOf(session.maxLeanLeft, session.maxLeanRight)))
+                StatItem(label = stringResource(R.string.stat_bike), value = "%.1f km".format(session.totalDistanceBikeKm))
+                StatItem(label = stringResource(R.string.stat_gps), value = "%.1f km".format(session.totalDistanceGpsKm))
+                StatItem(label = stringResource(R.string.fuel), value = "%.2f L".format(session.totalFuelLiters))
+                StatItem(label = stringResource(R.string.stat_max_lean), value = "%.0f°".format(maxOf(session.maxLeanLeft, session.maxLeanRight)))
             }
         }
     }
@@ -145,7 +161,7 @@ fun SessionCard(session: Session, onClick: () -> Unit, onRename: (String) -> Uni
     if (showEditDialog) {
         AlertDialog(
             onDismissRequest = { showEditDialog = false },
-            title = { Text("Rename Ride") },
+            title = { Text(stringResource(R.string.rename_ride)) },
             text = {
                 TextField(value = newName, onValueChange = { newName = it })
             },
@@ -153,7 +169,7 @@ fun SessionCard(session: Session, onClick: () -> Unit, onRename: (String) -> Uni
                 TextButton(onClick = {
                     onRename(newName)
                     showEditDialog = false
-                }) { Text("Save") }
+                }) { Text(stringResource(R.string.save)) }
             }
         )
     }
@@ -161,18 +177,37 @@ fun SessionCard(session: Session, onClick: () -> Unit, onRename: (String) -> Uni
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Delete Ride") },
-            text = { Text("This will permanently delete \"${session.name}\" and all its recorded data. This cannot be undone.") },
+            title = { Text(stringResource(R.string.delete_ride_title)) },
+            text = { Text(stringResource(R.string.delete_ride_message, session.name)) },
             confirmButton = {
                 TextButton(onClick = {
                     onDelete()
                     showDeleteDialog = false
-                }) { Text("Delete") }
+                }) { Text(stringResource(R.string.delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { showDeleteDialog = false }) { Text(stringResource(R.string.cancel)) }
             }
         )
+    }
+}
+
+@Composable
+fun SpeedSparkline(records: List<TelemetryRecord>) {
+    val maxSpeed = (records.maxOfOrNull { it.speed } ?: 0).coerceAtLeast(1)
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(30.dp)
+    ) {
+        val stepX = size.width / (records.size - 1)
+        val path = androidx.compose.ui.graphics.Path()
+        records.forEachIndexed { index, record ->
+            val x = index * stepX
+            val y = size.height - (record.speed / maxSpeed.toFloat()) * size.height
+            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        drawPath(path = path, color = TelemetryAccent, style = Stroke(width = 1.5.dp.toPx()))
     }
 }
 
@@ -209,12 +244,12 @@ fun SessionDetailView(records: List<TelemetryRecord>) {
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         if (showError) {
             Text(
-                text = "Error loading chart data",
+                text = stringResource(R.string.chart_error),
                 color = Color.Red,
                 fontSize = 14.sp
             )
         } else {
-            Text(text = "Speed (White) & RPM/100 (Cyan)", color = Color.White, fontSize = 14.sp)
+            Text(text = stringResource(R.string.chart_legend), color = Color.White, fontSize = 14.sp)
         }
         Spacer(modifier = Modifier.height(8.dp))
         

@@ -15,6 +15,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -34,11 +36,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.os.LocaleListCompat
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
@@ -50,6 +56,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.mototelemetryapp.data.Session
 import com.example.mototelemetryapp.ui.AnalysisScreen
 import com.example.mototelemetryapp.ui.DashboardScreen
 import com.example.mototelemetryapp.ui.HistoryScreen
@@ -67,6 +74,9 @@ import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.api.services.drive.DriveScopes
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
     
@@ -89,6 +99,7 @@ class MainActivity : AppCompatActivity() {
                 // never-started service instance just by opening the app.
                 dashboardViewModel.bindService(context, autoCreate = false)
                 dashboardViewModel.fetchHistory(context)
+                dashboardViewModel.fetchDashboardSummary(context)
             }
             
             // Only unbind when activity is actually destroyed, not on configuration change
@@ -112,13 +123,6 @@ class MainActivity : AppCompatActivity() {
                     } catch (e: ApiException) {
                         Log.e("MainActivity", "Authorization failed: ${e.message}")
                     }
-                }
-            }
-
-            val backupStatus by dashboardViewModel.backupStatus.collectAsState()
-            LaunchedEffect(backupStatus) {
-                backupStatus?.let {
-                    Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
                 }
             }
 
@@ -208,8 +212,16 @@ class MainActivity : AppCompatActivity() {
                                         onCalibrate = { dashboardViewModel.calibrateLeanAngle() }
                                     )
                                 } else {
+                                    val sessions by dashboardViewModel.sessions.collectAsState()
+                                    val fuelLevelPct by dashboardViewModel.fuelLevelPct.collectAsState()
+                                    val serviceRemainingKm by dashboardViewModel.serviceRemainingKm.collectAsState()
+                                    val backupStatus by dashboardViewModel.backupStatus.collectAsState()
                                     MainScreen(
                                         isTrackingActive = isTrackingActive,
+                                        lastRide = sessions.firstOrNull(),
+                                        fuelLevelPct = fuelLevelPct,
+                                        serviceRemainingKm = serviceRemainingKm,
+                                        backupStatus = backupStatus,
                                         onStartService = {
                                             startTelemetryService()
                                             dashboardViewModel.setTrackingActive(true)
@@ -220,6 +232,8 @@ class MainActivity : AppCompatActivity() {
                                             dashboardViewModel.setTrackingActive(false)
                                         },
                                         onGoToPanel = { dashboardViewModel.bindService(context) },
+                                        onNavigateHistory = { navController.navigate("history") },
+                                        onNavigateAnalysis = { navController.navigate("analysis") },
                                         onBackup = {
                                             lifecycleScope.launch {
                                                 try {
@@ -290,7 +304,7 @@ class MainActivity : AppCompatActivity() {
                                 }
                             }
                             composable("history") {
-                                val history by dashboardViewModel.history.collectAsState()
+                                val history by dashboardViewModel.getLatestSessionRecords(context).collectAsState(initial = emptyList())
                                 HistoryScreen(records = history)
                             }
                             composable("analysis") {
@@ -332,9 +346,15 @@ class MainActivity : AppCompatActivity() {
 @Composable
 fun MainScreen(
     isTrackingActive: Boolean,
+    lastRide: Session?,
+    fuelLevelPct: Int?,
+    serviceRemainingKm: Int?,
+    backupStatus: String?,
     onStartService: () -> Unit,
     onStopService: () -> Unit,
     onGoToPanel: () -> Unit,
+    onNavigateHistory: () -> Unit,
+    onNavigateAnalysis: () -> Unit,
     onBackup: () -> Unit,
     onLanguageChange: (String) -> Unit
 ) {
@@ -380,6 +400,120 @@ fun MainScreen(
             fontFamily = FontFamily.Monospace,
             color = TelemetryOnSurfaceMuted
         )
+
+        Spacer(modifier = Modifier.height(26.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            InfoCard(modifier = Modifier.weight(1f)) {
+                Text(text = stringResource(R.string.last_ride), color = TelemetryOnSurfaceMuted, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
+                Text(
+                    text = lastRide?.name ?: "—",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+                Text(
+                    text = lastRide?.let {
+                        SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault()).format(Date(it.startTime))
+                    } ?: "",
+                    color = TelemetryOnSurfaceMuted,
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                Text(
+                    text = if (lastRide != null) "%.1f km".format(lastRide.totalDistanceGpsKm) else "",
+                    color = TelemetryAccent,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+            InfoCard(modifier = Modifier.weight(1f)) {
+                Text(text = stringResource(R.string.fuel), color = TelemetryOnSurfaceMuted, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
+                Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(top = 6.dp)) {
+                    Text(text = "${fuelLevelPct ?: 0}", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text(text = "%", color = TelemetryOnSurfaceMuted, fontSize = 11.sp, modifier = Modifier.padding(bottom = 3.dp, start = 2.dp))
+                }
+                Box(
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .fillMaxWidth()
+                        .height(5.dp)
+                        .background(Color(0xFF2B2B2B), RoundedCornerShape(100.dp))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth((fuelLevelPct ?: 0) / 100f)
+                            .fillMaxHeight()
+                            .background(Color(0xFFFFE600), RoundedCornerShape(100.dp))
+                    )
+                }
+            }
+            InfoCard(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = stringResource(R.string.service),
+                    color = TelemetryOnSurfaceMuted,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.5.sp,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Box(modifier = Modifier.padding(top = 4.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(
+                        progress = { ((serviceRemainingKm ?: 0) / DashboardViewModel.SERVICE_INTERVAL_KM).coerceIn(0f, 1f) },
+                        modifier = Modifier.size(60.dp),
+                        color = TelemetryAccent,
+                        trackColor = Color(0xFF2B2B2B),
+                        strokeWidth = 5.dp,
+                        strokeCap = StrokeCap.Round
+                    )
+                    Text(text = "${serviceRemainingKm ?: 0}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                Text(text = stringResource(R.string.km_left), color = TelemetryOnSurfaceMuted, fontSize = 8.sp, modifier = Modifier.padding(top = 6.dp))
+            }
+        }
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        Text(
+            text = stringResource(R.string.quick_access),
+            color = Color(0xFF5A5A5A),
+            fontSize = 9.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.sp,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            QuickAccessButton(
+                icon = Icons.Default.Speed,
+                label = stringResource(R.string.panel),
+                onClick = onGoToPanel,
+                modifier = Modifier.weight(1f)
+            )
+            QuickAccessButton(
+                icon = Icons.Default.History,
+                label = stringResource(R.string.history),
+                onClick = onNavigateHistory,
+                modifier = Modifier.weight(1f)
+            )
+            QuickAccessButton(
+                icon = Icons.Default.QueryStats,
+                label = stringResource(R.string.analysis),
+                onClick = onNavigateAnalysis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
 
         if (isTrackingActive) {
@@ -449,6 +583,18 @@ fun MainScreen(
             Text(stringResource(R.string.backup_drive), fontWeight = FontWeight.SemiBold)
         }
 
+        if (backupStatus != null) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Box(
+                modifier = Modifier
+                    .background(Color(0xFF1A1A1A), RoundedCornerShape(100.dp))
+                    .border(1.dp, Color(0xFF262626), RoundedCornerShape(100.dp))
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                Text(text = backupStatus, color = Color(0xFFCCCCCC), fontSize = 12.sp)
+            }
+        }
+
         Spacer(modifier = Modifier.height(44.dp))
 
         // Language Selection
@@ -476,5 +622,37 @@ fun MainScreen(
         }
 
         Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+@Composable
+fun InfoCard(
+    modifier: Modifier = Modifier,
+    horizontalAlignment: Alignment.Horizontal = Alignment.Start,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = modifier
+            .background(Color(0xFF161616), RoundedCornerShape(14.dp))
+            .border(1.dp, Color(0xFF232323), RoundedCornerShape(14.dp))
+            .padding(horizontal = 10.dp, vertical = 12.dp),
+        horizontalAlignment = horizontalAlignment,
+        content = content
+    )
+}
+
+@Composable
+fun QuickAccessButton(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .background(Color(0xFF161616), RoundedCornerShape(12.dp))
+            .border(1.dp, Color(0xFF262626), RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = Color(0xFFCCCCCC), modifier = Modifier.size(17.dp))
+        Text(text = label, color = Color(0xFFCCCCCC), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
     }
 }

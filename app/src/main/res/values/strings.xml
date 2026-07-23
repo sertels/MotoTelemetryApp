@@ -9,7 +9,7 @@
     <string name="brake_rear">REAR BRAKE</string>
     <string name="start_tracking">Start Tracking</string>
     <string name="stop">Stop</string>
-    <string name="backup_drive">Backup to Drive</string>
+    <string name="backup_drive">Backup Rides to Drive</string>
     <string name="main_title">Voge 900DSX Telemetry</string>
     <string name="service_title">Moto Telemetry Active</string>
     <string name="service_content">Recording Voge 900 data and route history...</string>
@@ -28,4 +28,24 @@
     <string name="delete_session">Delete session</string>
     <string name="lean_source_phone">PHONE</string>
     <string name="lean_source_bike">BIKE</string>
+    <string name="last_ride">LAST RIDE</string>
+    <string name="fuel">FUEL</string>
+    <string name="service">SERVICE</string>
+    <string name="km_left">km left</string>
+    <string name="back_to_sessions">&lt; Back to Sessions</string>
+    <string name="min_short">MIN</string>
+    <string name="avg_kmh">AVG KM/H</string>
+    <string name="km_short">KM</string>
+    <string name="chart_legend">Speed (White) &amp; RPM/100 (Blue)</string>
+    <string name="stat_bike">BIKE</string>
+    <string name="stat_gps">GPS</string>
+    <string name="stat_max_lean">MAX LEAN</string>
+    <string name="quick_access">QUICK ACCESS</string>
+    <string name="rename_ride">Rename Ride</string>
+    <string name="save">Save</string>
+    <string name="delete_ride_title">Delete Ride</string>
+    <string name="delete_ride_message">This will permanently delete \"%1$s\" and all its recorded data. This cannot be undone.</string>
+    <string name="cancel">Cancel</string>
+    <string name="delete">Delete</string>
+    <string name="chart_error">Error loading chart data</string>
 </resources>

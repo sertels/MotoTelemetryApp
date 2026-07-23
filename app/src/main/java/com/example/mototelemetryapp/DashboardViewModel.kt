@@ -12,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.mototelemetryapp.data.AppDatabase
 import com.example.mototelemetryapp.data.Session
 import com.example.mototelemetryapp.data.TelemetryRecord
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -50,8 +51,27 @@ class DashboardViewModel : ViewModel() {
     private var telemetryService: TelemetryService? = null
     
     // Geçmiş veriler
-    private val _history = MutableStateFlow<List<TelemetryRecord>>(emptyList())
-    val history = _history.asStateFlow()
+    fun getLatestSessionRecords(context: Context) =
+        AppDatabase.getDatabase(context).telemetryDao().getLatestSessionRecords()
+
+    private val _fuelLevelPct = MutableStateFlow<Int?>(null)
+    val fuelLevelPct = _fuelLevelPct.asStateFlow()
+
+    // Km remaining until the next service interval (SERVICE_INTERVAL_KM), based on
+    // lifetime distance across all sessions. No dedicated "last serviced at" tracking
+    // exists yet, so this assumes service happens every SERVICE_INTERVAL_KM exactly.
+    private val _serviceRemainingKm = MutableStateFlow<Int?>(null)
+    val serviceRemainingKm = _serviceRemainingKm.asStateFlow()
+
+    fun fetchDashboardSummary(context: Context) {
+        viewModelScope.launch {
+            val dao = AppDatabase.getDatabase(context).telemetryDao()
+            _fuelLevelPct.value = dao.getLastRecord()?.fuelLevel
+            val totalKm = dao.getTotalDistanceKm() ?: 0f
+            val remaining = SERVICE_INTERVAL_KM - (totalKm % SERVICE_INTERVAL_KM)
+            _serviceRemainingKm.value = remaining.toInt()
+        }
+    }
 
     fun backupToCloud(context: Context, account: Account) {
         viewModelScope.launch {
@@ -59,6 +79,8 @@ class DashboardViewModel : ViewModel() {
             val manager = GoogleDriveManager(context)
             val success = manager.uploadDatabase(account)
             _backupStatus.value = if (success) context.getString(R.string.backup_success) else context.getString(R.string.backup_error)
+            delay(2600)
+            _backupStatus.value = null
         }
     }
 
@@ -131,5 +153,9 @@ class DashboardViewModel : ViewModel() {
     override fun onCleared() {
         super.onCleared()
         telemetryService = null
+    }
+
+    companion object {
+        const val SERVICE_INTERVAL_KM = 6000f
     }
 }

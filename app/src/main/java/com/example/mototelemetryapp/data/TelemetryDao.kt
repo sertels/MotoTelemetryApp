@@ -33,6 +33,15 @@ interface TelemetryDao {
     @Query("SELECT * FROM telemetry_records WHERE sessionId = :sessionId ORDER BY timestamp ASC")
     fun getRecordsForSession(sessionId: Long): Flow<List<TelemetryRecord>>
 
+    @Query("SELECT * FROM telemetry_records WHERE sessionId = (SELECT id FROM sessions ORDER BY startTime DESC LIMIT 1) ORDER BY timestamp ASC")
+    fun getLatestSessionRecords(): Flow<List<TelemetryRecord>>
+
+    @Query("SELECT * FROM telemetry_records ORDER BY timestamp DESC LIMIT 1")
+    suspend fun getLastRecord(): TelemetryRecord?
+
+    @Query("SELECT SUM(totalDistanceGpsKm) FROM sessions")
+    suspend fun getTotalDistanceKm(): Float?
+
     @Query("DELETE FROM sessions")
     suspend fun deleteAllSessions()
 }
