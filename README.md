@@ -7,10 +7,13 @@ The application leverages the fact that this motorcycle shares the **BMW F900 ar
 ## 🚀 Key Features
 
 - **Live Engine Data (OBD2):** Real-time monitoring of Speed, RPM, Throttle Position, and Front/Rear Brake Pressure (via UDS/Enhanced PIDs) using a Bluetooth ELM327 adapter.
-- **Physical Analysis (IMU):** Real-time **Lean Angle** and **G-Force** measurement using the phone's internal sensors and the motorcycle's internal IMU.
-- **Route Tracking (GPS):** Visualization of the riding route on a map using Google Maps integration.
-- **Data Logging (Room DB):** Recording all telemetry data (Speed, RPM, Lean, GPS, etc.) to a local database at 5Hz (5 times per second).
-- **Modern Dashboard:** A sporty dashboard designed with Jetpack Compose to visualize live data.
+- **Physical Analysis (IMU):** Real-time **Lean Angle** and **G-Force** measurement using the phone's internal sensors and the motorcycle's internal IMU, with a one-tap calibration to zero out the phone's mount tilt.
+- **Route Tracking (GPS):** Visualization of the riding route on a map using Google Maps integration, with a stats overlay (distance, duration, average speed).
+- **Data Logging (Room DB):** Recording all telemetry data (Speed, RPM, Lean, GPS, etc.) to a local database at 5Hz (5 times per second), independent of whether an OBD2 adapter is connected.
+- **Modern Dashboard:** A card-based, cyan-accented dark UI designed with Jetpack Compose, with an adaptive landscape layout and a screen-rotation lock so the display doesn't flip mid-corner.
+- **Home Dashboard:** Main menu shows your last ride, current fuel level, and an estimated service-interval countdown, plus quick-access shortcuts to Panel/History/Analysis.
+- **Ride Management:** Rename or delete recorded sessions from the Analysis tab.
+- **Multi-language:** Full English/Turkish UI with in-app language switching.
 - **Cloud Backup:** Secure backup and restore of ride data using Google Drive API.
 
 ## 🛠 Tech Stack
@@ -33,8 +36,10 @@ The application leverages the fact that this motorcycle shares the **BMW F900 ar
 
 ## 📸 Dashboard Interface
 
-- **Panel:** Displays Speed, RPM, Gear, Throttle, and Brake bars. The motorcycle silhouette tilts in real-time based on the selected sensor data.
-- **History:** View recorded routes as Polylines on the map.
+- **Main Menu:** Last Ride, Fuel, and Service info cards, Quick Access shortcuts, and Start Tracking/Stop/Backup controls.
+- **Panel:** Displays Speed, RPM, Gear, Throttle, and Brake bars. The lean gauge tilts in real-time based on the selected sensor (phone or bike), with a tap-to-calibrate button and a phone/motorcycle icon toggle.
+- **History:** View recorded routes as Polylines on the map, with a KM/duration/average speed overlay.
+- **Analysis:** Session list with per-ride speed sparklines, stats, rename, and delete, plus a detail view charting Speed and RPM over the ride.
 
 ## 📖 Documentation and Development Process
 
