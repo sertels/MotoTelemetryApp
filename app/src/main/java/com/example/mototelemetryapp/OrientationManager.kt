@@ -14,6 +14,11 @@ class OrientationManager(context: Context) : SensorEventListener {
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
     private val accelSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    // Raw roll before the mount-tilt offset is applied.
+    private var rawRoll = 0f
+    private var rollOffset = prefs.getFloat(KEY_ROLL_OFFSET, 0f)
 
     private val _leanAngle = MutableStateFlow(0f)
     val leanAngle = _leanAngle.asStateFlow()
@@ -34,6 +39,12 @@ class OrientationManager(context: Context) : SensorEventListener {
         sensorManager.unregisterListener(this)
     }
 
+    // Zeroes the lean angle to the phone's current mount tilt; persists across restarts.
+    fun calibrate() {
+        rollOffset = rawRoll
+        prefs.edit().putFloat(KEY_ROLL_OFFSET, rollOffset).apply()
+    }
+
     override fun onSensorChanged(event: SensorEvent?) {
         if (event == null) return
 
@@ -41,14 +52,14 @@ class OrientationManager(context: Context) : SensorEventListener {
             Sensor.TYPE_ROTATION_VECTOR -> {
                 val rotationMatrix = FloatArray(9)
                 SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-                
+
                 val orientation = FloatArray(3)
                 SensorManager.getOrientation(rotationMatrix, orientation)
-                
+
                 // Roll (Z ekseni etrafında dönüş) -> Radyanı dereceye çeviriyoruz
                 // Bu değer motorun sağa/sola yatışını temsil eder.
-                val roll = Math.toDegrees(orientation[2].toDouble()).toFloat()
-                _leanAngle.value = roll
+                rawRoll = Math.toDegrees(orientation[2].toDouble()).toFloat()
+                _leanAngle.value = normalizeAngle(rawRoll - rollOffset)
             }
             Sensor.TYPE_ACCELEROMETER -> {
                 val x = event.values[0]
@@ -63,5 +74,17 @@ class OrientationManager(context: Context) : SensorEventListener {
         }
     }
 
+    private fun normalizeAngle(angle: Float): Float {
+        var a = angle
+        while (a > 180f) a -= 360f
+        while (a < -180f) a += 360f
+        return a
+    }
+
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    companion object {
+        private const val PREFS_NAME = "orientation_prefs"
+        private const val KEY_ROLL_OFFSET = "roll_offset"
+    }
 }

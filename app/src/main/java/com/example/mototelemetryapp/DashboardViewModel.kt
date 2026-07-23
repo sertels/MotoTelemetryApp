@@ -1,6 +1,7 @@
 package com.example.mototelemetryapp
 
 import android.accounts.Account
+import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -35,6 +36,8 @@ class DashboardViewModel : ViewModel() {
     private val _backupStatus = MutableStateFlow<String?>(null)
     val backupStatus = _backupStatus.asStateFlow()
 
+    // Cleared in unbindService()/onCleared(), so this never outlives the ViewModel's binding.
+    @SuppressLint("StaticFieldLeak")
     private var telemetryService: TelemetryService? = null
     
     // Geçmiş veriler
@@ -95,8 +98,18 @@ class DashboardViewModel : ViewModel() {
             context.unbindService(connection)
             _isServiceBound.value = false
         }
+        telemetryService = null
     }
 
     // Servis bağlıyken akışı expose et
     fun getTelemetryFlow() = telemetryService?.currentTelemetry
+
+    fun calibrateLeanAngle() {
+        telemetryService?.calibrateLeanAngle()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        telemetryService = null
+    }
 }

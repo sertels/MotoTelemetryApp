@@ -7,8 +7,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,7 +30,8 @@ import com.example.mototelemetryapp.data.TelemetryRecord
 fun DashboardScreen(
     data: TelemetryRecord?,
     leanSource: LeanSource,
-    onToggleSource: () -> Unit
+    onToggleSource: () -> Unit,
+    onCalibrate: () -> Unit
 ) {
     val currentLean = if (leanSource == LeanSource.PHONE) data?.leanAnglePhone else data?.leanAngleBike
     val leanLabel = if (leanSource == LeanSource.PHONE) "TEL" else "MOTO"
@@ -124,6 +127,16 @@ fun DashboardScreen(
                 color = Color.Gray,
                 fontSize = 12.sp
             )
+            if (leanSource == LeanSource.PHONE) {
+                Spacer(modifier = Modifier.width(16.dp))
+                IconButton(onClick = onCalibrate, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = stringResource(R.string.calibrate_angle),
+                        tint = Color.Gray
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.weight(1f))

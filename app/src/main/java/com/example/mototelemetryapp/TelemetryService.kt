@@ -60,6 +60,10 @@ class TelemetryService : Service() {
         return binder
     }
 
+    fun calibrateLeanAngle() {
+        orientationManager?.calibrate()
+    }
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()

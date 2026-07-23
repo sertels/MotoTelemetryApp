@@ -16,7 +16,10 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.*
@@ -29,7 +32,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.os.LocaleListCompat
 import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -52,12 +58,15 @@ class MainActivity : ComponentActivity() {
     private val dashboardViewModel: DashboardViewModel by viewModels()
     private val credentialManager by lazy { CredentialManager.create(this) }
 
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             val context = LocalContext.current
             val navController = rememberNavController()
             val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+            val backupErrorMessage = stringResource(R.string.backup_error)
+            var isRotationLocked by remember { mutableStateOf(false) }
             
             // Service binding management - only bind when activity is created, not on recomposition
             LaunchedEffect(Unit) {
@@ -101,6 +110,35 @@ class MainActivity : ComponentActivity() {
                 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
+                    topBar = {
+                        if (isBound) {
+                            TopAppBar(
+                                title = { },
+                                navigationIcon = {
+                                    IconButton(onClick = { dashboardViewModel.unbindService(context) }) {
+                                        Icon(Icons.Default.Home, contentDescription = stringResource(R.string.main_title))
+                                    }
+                                },
+                                actions = {
+                                    IconButton(onClick = {
+                                        isRotationLocked = !isRotationLocked
+                                        requestedOrientation = if (isRotationLocked) {
+                                            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
+                                        } else {
+                                            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                                        }
+                                    }) {
+                                        Icon(
+                                            imageVector = if (isRotationLocked) Icons.Default.Lock else Icons.Default.LockOpen,
+                                            contentDescription = stringResource(
+                                                if (isRotationLocked) R.string.unlock_rotation else R.string.lock_rotation
+                                            )
+                                        )
+                                    }
+                                }
+                            )
+                        }
+                    },
                     bottomBar = {
                         if (isBound) {
                             NavigationBar {
@@ -137,7 +175,8 @@ class MainActivity : ComponentActivity() {
                                     DashboardScreen(
                                         data = currentData,
                                         leanSource = leanSource,
-                                        onToggleSource = { dashboardViewModel.toggleLeanSource() }
+                                        onToggleSource = { dashboardViewModel.toggleLeanSource() },
+                                        onCalibrate = { dashboardViewModel.calibrateLeanAngle() }
                                     )
                                 }
                                 composable("history") {
@@ -176,9 +215,18 @@ class MainActivity : ComponentActivity() {
 
                                             val result = credentialManager.getCredential(context, request)
                                             val credential = result.credential
-                                            
-                                            if (credential is GoogleIdTokenCredential) {
-                                                val email = credential.id
+
+                                            val googleIdTokenCredential = if (
+                                                credential is CustomCredential &&
+                                                credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                                            ) {
+                                                GoogleIdTokenCredential.createFrom(credential.data)
+                                            } else {
+                                                null
+                                            }
+
+                                            if (googleIdTokenCredential != null) {
+                                                val email = googleIdTokenCredential.id
                                                 val account = android.accounts.Account(email, "com.google")
 
                                                 // 2. Request Drive Authorization
@@ -201,7 +249,14 @@ class MainActivity : ComponentActivity() {
                                                             dashboardViewModel.backupToCloud(context, account)
                                                         }
                                                     }
+                                            } else {
+                                                Log.e("MainActivity", "Credential was not a Google ID token")
                                             }
+                                        } catch (e: NoCredentialException) {
+                                            Log.e("MainActivity", "No Google account available for sign-in", e)
+                                            Toast.makeText(context, backupErrorMessage, Toast.LENGTH_SHORT).show()
+                                        } catch (e: GetCredentialException) {
+                                            Log.e("MainActivity", "Credential retrieval failed", e)
                                         } catch (e: Exception) {
                                             Log.e("MainActivity", "Backup flow failed", e)
                                         }
