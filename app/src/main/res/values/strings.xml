@@ -55,4 +55,5 @@
     <string name="obd_sweep_running">Sweeping headers/DIDs…</string>
     <string name="obd_sweep_done">Sweep complete</string>
     <string name="obd_sweep_hint">Scanning CAN headers and UDS identifiers for a response. This takes about a minute.</string>
+    <string name="battery_optimization_hint">Recording may stop when the screen locks. Tap to allow unrestricted battery usage.</string>
 </resources>

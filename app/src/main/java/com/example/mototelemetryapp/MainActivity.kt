@@ -1,9 +1,14 @@
 package com.example.mototelemetryapp
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -30,6 +35,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -390,6 +396,26 @@ fun MainScreen(
         launcher.launch(permissions.toTypedArray())
     }
 
+    val context = LocalContext.current
+    val batteryOptPrefs = remember { context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
+    var batteryOptExempt by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
+
+    val batteryOptLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        batteryOptExempt = isIgnoringBatteryOptimizations(context)
+    }
+
+    // Foreground services can still be killed by OEM battery managers (this is exactly
+    // what happened to a recorded ride once) unless the app is exempted from battery
+    // optimization. Ask once automatically; the warning row below stays as a manual retry.
+    LaunchedEffect(Unit) {
+        if (!batteryOptExempt && !batteryOptPrefs.getBoolean(KEY_BATTERY_OPT_PROMPTED, false)) {
+            batteryOptPrefs.edit().putBoolean(KEY_BATTERY_OPT_PROMPTED, true).apply()
+            batteryOptLauncher.launch(requestIgnoreBatteryOptimizationsIntent(context))
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -525,6 +551,22 @@ fun MainScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        if (!batteryOptExempt) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF241C0A), RoundedCornerShape(10.dp))
+                    .clickable { batteryOptLauncher.launch(requestIgnoreBatteryOptimizationsIntent(context)) }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(imageVector = Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFFC107), modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = stringResource(R.string.battery_optimization_hint), color = Color(0xFFFFC107), fontSize = 11.sp)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
         if (isTrackingActive) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
@@ -633,6 +675,17 @@ fun MainScreen(
         Spacer(modifier = Modifier.height(32.dp))
     }
 }
+
+private const val KEY_BATTERY_OPT_PROMPTED = "battery_opt_prompted"
+
+private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+    val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+    return powerManager.isIgnoringBatteryOptimizations(context.packageName)
+}
+
+@SuppressLint("BatteryLife")
+private fun requestIgnoreBatteryOptimizationsIntent(context: Context): Intent =
+    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).setData(Uri.parse("package:${context.packageName}"))
 
 @Composable
 fun InfoCard(
