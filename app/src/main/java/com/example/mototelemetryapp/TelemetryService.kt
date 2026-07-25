@@ -136,7 +136,11 @@ class TelemetryService : Service() {
                     Log.e("TelemetryService", "OrientationManager not initialized")
                     return@launch
                 }
-                
+
+                // Finalize any session left with endTime == null by a previous run that
+                // was killed before onDestroy() could run (e.g. backgrounded + OS/battery kill).
+                recoverOrphanedSessions(database)
+
                 // 1. Create a new Session
                 val startTime = System.currentTimeMillis()
                 val dateStr = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(startTime))
@@ -202,6 +206,56 @@ class TelemetryService : Service() {
             } catch (e: Exception) {
                 Log.e("TelemetryService", "Fatal error in startTelemetryTracking: ${e.message}", e)
             }
+        }
+    }
+
+    private suspend fun recoverOrphanedSessions(database: AppDatabase) {
+        for (session in database.telemetryDao().getOpenSessions()) {
+            val records = database.telemetryDao().getRecordsForSessionOnce(session.id)
+            if (records.isEmpty()) {
+                database.telemetryDao().updateSession(session.copy(endTime = session.startTime))
+                continue
+            }
+
+            var distanceMeters = 0f
+            var prevLocation: Location? = null
+            var recoveredMaxSpeed = 0
+            var recoveredMaxLeanLeft = 0f
+            var recoveredMaxLeanRight = 0f
+            var recoveredMaxCoolant = 0
+            var recoveredFuelLiters = 0f
+
+            for (r in records) {
+                recoveredMaxSpeed = max(recoveredMaxSpeed, r.speed)
+                recoveredMaxCoolant = max(recoveredMaxCoolant, r.coolantTemp)
+                if (r.leanAngleBike < 0) {
+                    recoveredMaxLeanLeft = max(recoveredMaxLeanLeft, -r.leanAngleBike)
+                } else {
+                    recoveredMaxLeanRight = max(recoveredMaxLeanRight, r.leanAngleBike)
+                }
+                recoveredFuelLiters += (r.fuelRate / 3600f) * 0.2f
+
+                if (r.latitude != 0.0 || r.longitude != 0.0) {
+                    val loc = Location("recovery").apply {
+                        latitude = r.latitude
+                        longitude = r.longitude
+                    }
+                    prevLocation?.let { distanceMeters += it.distanceTo(loc) }
+                    prevLocation = loc
+                }
+            }
+
+            database.telemetryDao().updateSession(
+                session.copy(
+                    endTime = records.last().timestamp,
+                    totalDistanceGpsKm = distanceMeters / 1000f,
+                    maxSpeed = recoveredMaxSpeed,
+                    maxLeanLeft = recoveredMaxLeanLeft,
+                    maxLeanRight = recoveredMaxLeanRight,
+                    maxCoolantTemp = recoveredMaxCoolant,
+                    totalFuelLiters = recoveredFuelLiters
+                )
+            )
         }
     }
 

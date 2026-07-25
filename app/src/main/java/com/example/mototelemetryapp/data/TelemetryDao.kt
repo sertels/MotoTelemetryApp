@@ -26,12 +26,19 @@ interface TelemetryDao {
     @Query("SELECT * FROM sessions WHERE id = :sessionId")
     suspend fun getSessionById(sessionId: Long): Session?
 
+    // Sessions left behind when the service was killed before onDestroy() could finalize them.
+    @Query("SELECT * FROM sessions WHERE endTime IS NULL")
+    suspend fun getOpenSessions(): List<Session>
+
     // Telemetry
     @Insert
     suspend fun insertRecord(record: TelemetryRecord)
 
     @Query("SELECT * FROM telemetry_records WHERE sessionId = :sessionId ORDER BY timestamp ASC")
     fun getRecordsForSession(sessionId: Long): Flow<List<TelemetryRecord>>
+
+    @Query("SELECT * FROM telemetry_records WHERE sessionId = :sessionId ORDER BY timestamp ASC")
+    suspend fun getRecordsForSessionOnce(sessionId: Long): List<TelemetryRecord>
 
     @Query("SELECT * FROM telemetry_records WHERE sessionId = (SELECT id FROM sessions ORDER BY startTime DESC LIMIT 1) ORDER BY timestamp ASC")
     fun getLatestSessionRecords(): Flow<List<TelemetryRecord>>
