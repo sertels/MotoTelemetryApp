@@ -48,4 +48,7 @@
     <string name="cancel">Cancel</string>
     <string name="delete">Delete</string>
     <string name="chart_error">Error loading chart data</string>
+    <string name="obd_connected">OBD Connected</string>
+    <string name="obd_disconnected">OBD Disconnected</string>
+    <string name="obd_no_paired_devices">No paired Bluetooth devices. Pair your OBD adapter in Bluetooth settings first.</string>
 </resources>

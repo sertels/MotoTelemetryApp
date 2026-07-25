@@ -16,6 +16,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 enum class LeanSource { PHONE, BIKE }
 
@@ -113,17 +114,35 @@ class DashboardViewModel : ViewModel() {
     fun getRecordsForSession(context: Context, sessionId: Long) = 
         AppDatabase.getDatabase(context).telemetryDao().getRecordsForSession(sessionId)
 
+    private val _obdConnected = MutableStateFlow(false)
+    val obdConnected = _obdConnected.asStateFlow()
+    private var obdConnectedCollectJob: Job? = null
+
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as TelemetryService.LocalBinder
             telemetryService = binder.getService()
             _isServiceBound.value = true
             _isTrackingActive.value = true
+            obdConnectedCollectJob?.cancel()
+            obdConnectedCollectJob = telemetryService?.obdConnected?.let { flow ->
+                viewModelScope.launch { flow.collect { _obdConnected.value = it } }
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
             telemetryService = null
             _isServiceBound.value = false
+            obdConnectedCollectJob?.cancel()
+            _obdConnected.value = false
+        }
+    }
+
+    fun getPairedObdDevices(): List<Pair<String, String>> = telemetryService?.getPairedObdDevices() ?: emptyList()
+
+    fun connectObd(address: String) {
+        viewModelScope.launch {
+            telemetryService?.connectObd(address)
         }
     }
 
@@ -141,6 +160,8 @@ class DashboardViewModel : ViewModel() {
             _isServiceBound.value = false
         }
         telemetryService = null
+        obdConnectedCollectJob?.cancel()
+        _obdConnected.value = false
     }
 
     // Servis bağlıyken akışı expose et

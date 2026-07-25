@@ -22,20 +22,44 @@ class BluetoothOBDManager(private val context: Context) {
 
     private val tag = "BluetoothOBDManager"
     private val obdUuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private var socket: BluetoothSocket? = null
     private var outputStream: OutputStream? = null
     private var inputStream: InputStream? = null
 
     private val _isConnected = MutableStateFlow(false)
-    @Suppress("unused")
     val isConnected = _isConnected.asStateFlow()
 
     private val _obdData = MutableStateFlow<Map<String, Int>>(emptyMap())
     val obdData = _obdData.asStateFlow()
 
+    // Common Bluetooth SPP adapter names in the wild (ELM327 clones ship under many brands),
+    // used only as a first-connect fallback before the user has picked a device explicitly.
+    private val knownAdapterNameHints = listOf("OBD", "ELM327", "ELM", "VLINK", "V-LINK", "ICAR", "VGATE", "OBDLINK")
+
     @SuppressLint("MissingPermission")
-    suspend fun connect(deviceName: String = "OBDII"): Boolean = withContext(Dispatchers.IO) {
+    fun getPairedDevices(): List<BluetoothDevice> {
+        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val adapter = bluetoothManager.adapter ?: return emptyList()
+        if (!adapter.isEnabled) return emptyList()
+        return adapter.bondedDevices.toList()
+    }
+
+    fun getPreferredDeviceAddress(): String? = prefs.getString(KEY_DEVICE_ADDRESS, null)
+
+    fun setPreferredDevice(address: String) {
+        prefs.edit().putString(KEY_DEVICE_ADDRESS, address).apply()
+    }
+
+    // Connects to the explicitly chosen device and remembers it for future rides.
+    suspend fun connectToDevice(address: String): Boolean {
+        setPreferredDevice(address)
+        return connect()
+    }
+
+    @SuppressLint("MissingPermission")
+    suspend fun connect(): Boolean = withContext(Dispatchers.IO) {
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val adapter = bluetoothManager.adapter
 
@@ -45,7 +69,11 @@ class BluetoothOBDManager(private val context: Context) {
         }
 
         val pairedDevices: Set<BluetoothDevice> = adapter.bondedDevices
-        val obdDevice = pairedDevices.find { it.name.contains(deviceName, ignoreCase = true) }
+        val preferredAddress = getPreferredDeviceAddress()
+        val obdDevice = when {
+            preferredAddress != null -> pairedDevices.find { it.address == preferredAddress }
+            else -> pairedDevices.find { device -> knownAdapterNameHints.any { device.name?.contains(it, ignoreCase = true) == true } }
+        }
 
         if (obdDevice == null) {
             Log.e(tag, "Eşleşmiş OBD2 cihazı bulunamadı.")
@@ -57,7 +85,7 @@ class BluetoothOBDManager(private val context: Context) {
             socket?.connect()
             outputStream = socket?.outputStream
             inputStream = socket?.inputStream
-            
+
             if (initELM327()) {
                 _isConnected.value = true
                 Log.d(tag, "OBD2 Bağlantısı Başarılı.")
@@ -310,5 +338,10 @@ class BluetoothOBDManager(private val context: Context) {
         } catch (e: IOException) {
             Log.e(tag, "Kapatma hatası: ${e.message}")
         }
+    }
+
+    companion object {
+        private const val PREFS_NAME = "obd_prefs"
+        private const val KEY_DEVICE_ADDRESS = "device_address"
     }
 }

@@ -64,6 +64,15 @@ class TelemetryService : Service() {
         orientationManager?.calibrate()
     }
 
+    val obdConnected get() = bluetoothOBDManager?.isConnected
+
+    @SuppressLint("MissingPermission")
+    fun getPairedObdDevices(): List<Pair<String, String>> =
+        bluetoothOBDManager?.getPairedDevices()?.map { (it.name ?: it.address) to it.address } ?: emptyList()
+
+    suspend fun connectObd(address: String): Boolean =
+        bluetoothOBDManager?.connectToDevice(address) ?: false
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
@@ -151,7 +160,7 @@ class TelemetryService : Service() {
                 currentSessionId = database.telemetryDao().insertSession(session)
 
                 // 2. Start OBD2 Connection (best-effort; phone sensors keep streaming even if this fails)
-                val connected = obdManager.connect("OBDII")
+                val connected = obdManager.connect()
                 if (connected) {
                     startOdometer = (obdManager.obdData.value["ODOMETER"] ?: 0).toLong()
                 } else {

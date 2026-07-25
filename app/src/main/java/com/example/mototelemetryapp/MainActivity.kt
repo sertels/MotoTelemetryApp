@@ -204,12 +204,16 @@ class MainActivity : AppCompatActivity() {
                                     val telemetryFlow = dashboardViewModel.getTelemetryFlow()
                                     val currentData by (telemetryFlow?.collectAsState(initial = null) ?: remember { mutableStateOf(null) })
                                     val leanSource by dashboardViewModel.leanSource.collectAsState()
+                                    val obdConnected by dashboardViewModel.obdConnected.collectAsState()
 
                                     DashboardScreen(
                                         data = currentData,
                                         leanSource = leanSource,
                                         onToggleSource = { dashboardViewModel.toggleLeanSource() },
-                                        onCalibrate = { dashboardViewModel.calibrateLeanAngle() }
+                                        onCalibrate = { dashboardViewModel.calibrateLeanAngle() },
+                                        obdConnected = obdConnected,
+                                        onFetchObdDevices = { dashboardViewModel.getPairedObdDevices() },
+                                        onConnectObd = { address -> dashboardViewModel.connectObd(address) }
                                     )
                                 } else {
                                     val sessions by dashboardViewModel.sessions.collectAsState()

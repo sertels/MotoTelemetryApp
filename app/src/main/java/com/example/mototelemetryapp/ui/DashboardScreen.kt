@@ -16,6 +16,8 @@ import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.TwoWheeler
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -51,7 +53,10 @@ fun DashboardScreen(
     data: TelemetryRecord?,
     leanSource: LeanSource,
     onToggleSource: () -> Unit,
-    onCalibrate: () -> Unit
+    onCalibrate: () -> Unit,
+    obdConnected: Boolean = false,
+    onFetchObdDevices: () -> List<Pair<String, String>> = { emptyList() },
+    onConnectObd: (String) -> Unit = {}
 ) {
     val currentLean = if (leanSource == LeanSource.PHONE) data?.leanAnglePhone else data?.leanAngleBike
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -69,7 +74,11 @@ fun DashboardScreen(
                 .padding(horizontal = 18.dp, vertical = 14.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            SpeedRpmCard(data, isLandscape = true, modifier = Modifier.align(Alignment.CenterVertically))
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.align(Alignment.CenterVertically)) {
+                ObdStatusBadge(connected = obdConnected, onFetchDevices = onFetchObdDevices, onConnect = onConnectObd)
+                Spacer(modifier = Modifier.height(8.dp))
+                SpeedRpmCard(data, isLandscape = true)
+            }
             Column(
                 modifier = Modifier.align(Alignment.CenterVertically),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -102,7 +111,14 @@ fun DashboardScreen(
                 .padding(18.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            LiveIndicator()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LiveIndicator()
+                ObdStatusBadge(connected = obdConnected, onFetchDevices = onFetchObdDevices, onConnect = onConnectObd)
+            }
             Spacer(modifier = Modifier.height(10.dp))
             SpeedGearRpmCard(data)
             Spacer(modifier = Modifier.height(22.dp))
@@ -122,9 +138,9 @@ fun DashboardScreen(
 }
 
 @Composable
-fun LiveIndicator() {
+fun LiveIndicator(modifier: Modifier = Modifier) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -135,6 +151,65 @@ fun LiveIndicator() {
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(text = "LIVE", color = TelemetryOnSurfaceMuted, fontSize = 10.sp, letterSpacing = 1.sp)
+    }
+}
+
+@Composable
+fun ObdStatusBadge(
+    connected: Boolean,
+    onFetchDevices: () -> List<Pair<String, String>>,
+    onConnect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    var devices by remember { mutableStateOf(emptyList<Pair<String, String>>()) }
+
+    Box(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .background(BadgeBg, RoundedCornerShape(100.dp))
+                .border(1.dp, CardBorder, RoundedCornerShape(100.dp))
+                .clickable {
+                    devices = onFetchDevices()
+                    menuExpanded = true
+                }
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(if (connected) TelemetryAccent else Color(0xFF5A5A5A))
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = stringResource(if (connected) R.string.obd_connected else R.string.obd_disconnected),
+                color = if (connected) Color.White else TelemetryOnSurfaceMuted,
+                fontSize = 10.sp,
+                letterSpacing = 0.5.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+            if (devices.isEmpty()) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.obd_no_paired_devices)) },
+                    onClick = { menuExpanded = false },
+                    enabled = false
+                )
+            } else {
+                devices.forEach { (name, address) ->
+                    DropdownMenuItem(
+                        text = { Text(name) },
+                        onClick = {
+                            onConnect(address)
+                            menuExpanded = false
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 
