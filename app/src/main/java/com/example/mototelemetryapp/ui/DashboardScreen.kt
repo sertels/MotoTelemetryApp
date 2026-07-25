@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.mototelemetryapp.LeanSource
+import com.example.mototelemetryapp.ObdSweepEntry
 import com.example.mototelemetryapp.R
 import com.example.mototelemetryapp.data.TelemetryRecord
 import com.example.mototelemetryapp.ui.theme.TelemetryAccent
@@ -56,7 +57,10 @@ fun DashboardScreen(
     onCalibrate: () -> Unit,
     obdConnected: Boolean = false,
     onFetchObdDevices: () -> List<Pair<String, String>> = { emptyList() },
-    onConnectObd: (String) -> Unit = {}
+    onConnectObd: (String) -> Unit = {},
+    obdSweepRunning: Boolean = false,
+    obdSweepResults: List<ObdSweepEntry> = emptyList(),
+    onRunObdSweep: () -> Unit = {}
 ) {
     val currentLean = if (leanSource == LeanSource.PHONE) data?.leanAnglePhone else data?.leanAngleBike
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -75,7 +79,14 @@ fun DashboardScreen(
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.align(Alignment.CenterVertically)) {
-                ObdStatusBadge(connected = obdConnected, onFetchDevices = onFetchObdDevices, onConnect = onConnectObd)
+                ObdStatusBadge(
+                    connected = obdConnected,
+                    onFetchDevices = onFetchObdDevices,
+                    onConnect = onConnectObd,
+                    sweepRunning = obdSweepRunning,
+                    sweepResults = obdSweepResults,
+                    onRunSweep = onRunObdSweep
+                )
                 Spacer(modifier = Modifier.height(8.dp))
                 SpeedRpmCard(data, isLandscape = true)
             }
@@ -117,7 +128,14 @@ fun DashboardScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 LiveIndicator()
-                ObdStatusBadge(connected = obdConnected, onFetchDevices = onFetchObdDevices, onConnect = onConnectObd)
+                ObdStatusBadge(
+                    connected = obdConnected,
+                    onFetchDevices = onFetchObdDevices,
+                    onConnect = onConnectObd,
+                    sweepRunning = obdSweepRunning,
+                    sweepResults = obdSweepResults,
+                    onRunSweep = onRunObdSweep
+                )
             }
             Spacer(modifier = Modifier.height(10.dp))
             SpeedGearRpmCard(data)
@@ -159,10 +177,14 @@ fun ObdStatusBadge(
     connected: Boolean,
     onFetchDevices: () -> List<Pair<String, String>>,
     onConnect: (String) -> Unit,
+    sweepRunning: Boolean = false,
+    sweepResults: List<ObdSweepEntry> = emptyList(),
+    onRunSweep: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var devices by remember { mutableStateOf(emptyList<Pair<String, String>>()) }
+    var showSweepDialog by remember { mutableStateOf(false) }
 
     Box(modifier = modifier) {
         Row(
@@ -209,8 +231,83 @@ fun ObdStatusBadge(
                     )
                 }
             }
+            if (connected) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.obd_run_sweep)) },
+                    onClick = {
+                        menuExpanded = false
+                        showSweepDialog = true
+                        onRunSweep()
+                    }
+                )
+            }
         }
     }
+
+    if (showSweepDialog) {
+        ObdSweepDialog(
+            running = sweepRunning,
+            results = sweepResults,
+            onDismiss = { showSweepDialog = false }
+        )
+    }
+}
+
+@Composable
+fun ObdSweepDialog(running: Boolean, results: List<ObdSweepEntry>, onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+        title = {
+            Text(
+                if (running) stringResource(R.string.obd_sweep_running) else stringResource(R.string.obd_sweep_done),
+                color = Color.White
+            )
+        },
+        text = {
+            Column(modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                if (running && results.isEmpty()) {
+                    Text(
+                        stringResource(R.string.obd_sweep_hint),
+                        color = TelemetryOnSurfaceMuted,
+                        fontSize = 12.sp
+                    )
+                }
+                val interesting = results.filter { it.response.replace(" ", "").startsWith("62") }
+                if (interesting.isNotEmpty()) {
+                    Text(
+                        "${interesting.size} / ${results.size}",
+                        color = TelemetryAccent,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                }
+                interesting.forEach { entry ->
+                    Row(modifier = Modifier.padding(vertical = 3.dp)) {
+                        Text(
+                            "${entry.header}/${entry.did}",
+                            color = TelemetryOnSurfaceMuted,
+                            fontSize = 11.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            modifier = Modifier.width(90.dp)
+                        )
+                        Text(
+                            entry.response,
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+        },
+        containerColor = Color(0xFF1C1C1C)
+    )
 }
 
 @Composable

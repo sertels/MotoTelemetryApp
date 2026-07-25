@@ -73,6 +73,13 @@ class TelemetryService : Service() {
     suspend fun connectObd(address: String): Boolean =
         bluetoothOBDManager?.connectToDevice(address) ?: false
 
+    val obdSweepRunning get() = bluetoothOBDManager?.sweepRunning
+    val obdSweepResults get() = bluetoothOBDManager?.sweepResults
+
+    suspend fun runObdSweep() {
+        bluetoothOBDManager?.sweepHeadersAndDids()
+    }
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()

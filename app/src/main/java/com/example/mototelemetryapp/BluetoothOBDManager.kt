@@ -11,12 +11,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration.Companion.milliseconds
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.UUID
+
+data class ObdSweepEntry(val header: String, val did: String, val response: String)
 
 class BluetoothOBDManager(private val context: Context) {
 
@@ -37,6 +41,16 @@ class BluetoothOBDManager(private val context: Context) {
     // Common Bluetooth SPP adapter names in the wild (ELM327 clones ship under many brands),
     // used only as a first-connect fallback before the user has picked a device explicitly.
     private val knownAdapterNameHints = listOf("OBD", "ELM327", "ELM", "VLINK", "V-LINK", "ICAR", "VGATE", "OBDLINK")
+
+    // Serializes every request/response round trip so the debug sweep can't interleave
+    // its own ATSH/DID commands with the regular polling loop on the same serial socket.
+    private val ioMutex = Mutex()
+
+    private val _sweepRunning = MutableStateFlow(false)
+    val sweepRunning = _sweepRunning.asStateFlow()
+
+    private val _sweepResults = MutableStateFlow<List<ObdSweepEntry>>(emptyList())
+    val sweepResults = _sweepResults.asStateFlow()
 
     @SuppressLint("MissingPermission")
     fun getPairedDevices(): List<BluetoothDevice> {
@@ -150,69 +164,110 @@ class BluetoothOBDManager(private val context: Context) {
         withContext(Dispatchers.IO) {
             while (_isConnected.value) {
                 try {
-                    // --- Engine Data (Header 7E0) ---
-                    sendCommand("ATSH7E0")
-                    delay(50.milliseconds)
-                    
-                    sendCommand("010C")
-                    val rpm = parseRPM(readResponse())
-
-                    sendCommand("010D")
-                    val speed = parseSpeed(readResponse())
-
-                    sendCommand("2243F7")
-                    val gear = parseGear(readResponse())
-
-                    sendCommand("0111")
-                    val throttle = parseThrottle(readResponse())
-
-                    // --- ABS/IMU Data (Header 7E1) ---
-                    sendCommand("ATSH7E1")
-                    delay(50.milliseconds)
-
-                    sendCommand("222B05")
-                    val brakeFront = parseBrake(readResponse(), "622B05")
-
-                    sendCommand("222B06")
-                    val brakeRear = parseBrake(readResponse(), "622B06")
-                    
-                    sendCommand("22D10D")
-                    val leanBike = parseLeanBike(readResponse())
-                    
-                    // --- Coolant & Odometer (Standard & UDS) ---
-                    sendCommand("0105")
-                    val coolant = parseCoolant(readResponse())
-                    
-                    sendCommand("222503")
-                    val odometer = parseOdometer(readResponse())
-                    
-                    // --- Fuel Data ---
-                    sendCommand("015E")
-                    val fuelRate = parseFuelRate(readResponse())
-                    
-                    sendCommand("012F")
-                    val fuelLevel = parseFuelLevel(readResponse())
-
-                    _obdData.value = mapOf(
-                        "RPM" to rpm,
-                        "SPEED" to speed,
-                        "GEAR" to gear,
-                        "THROTTLE" to throttle,
-                        "BRAKE_FRONT" to brakeFront,
-                        "BRAKE_REAR" to brakeRear,
-                        "LEAN_BIKE" to leanBike,
-                        "COOLANT" to coolant,
-                        "ODOMETER" to odometer.toInt(), // Lossy for Map, but we'll use a better way later
-                        "FUEL_RATE" to (fuelRate * 100).toInt(), // Scale for Map
-                        "FUEL_LEVEL" to fuelLevel
-                    )
-                    
+                    _obdData.value = ioMutex.withLock { pollOnce() }
                     delay(100.milliseconds)
                 } catch (e: Exception) {
                     Log.e(tag, "Error in data loop: ${e.message}", e)
                     delay(500.milliseconds) // Wait before retrying
                 }
             }
+        }
+    }
+
+    // One full read cycle across both known headers. Must only run while ioMutex is held.
+    private suspend fun pollOnce(): Map<String, Int> {
+        // --- Engine Data (Header 7E0) ---
+        sendCommand("ATSH7E0")
+        delay(50.milliseconds)
+
+        sendCommand("010C")
+        val rpm = parseRPM(readResponse())
+
+        sendCommand("010D")
+        val speed = parseSpeed(readResponse())
+
+        sendCommand("2243F7")
+        val gear = parseGear(readResponse())
+
+        sendCommand("0111")
+        val throttle = parseThrottle(readResponse())
+
+        // --- ABS/IMU Data (Header 7E1) ---
+        sendCommand("ATSH7E1")
+        delay(50.milliseconds)
+
+        sendCommand("222B05")
+        val brakeFront = parseBrake(readResponse(), "622B05")
+
+        sendCommand("222B06")
+        val brakeRear = parseBrake(readResponse(), "622B06")
+
+        sendCommand("22D10D")
+        val leanBike = parseLeanBike(readResponse())
+
+        // --- Coolant & Odometer (Standard & UDS) ---
+        sendCommand("0105")
+        val coolant = parseCoolant(readResponse())
+
+        sendCommand("222503")
+        val odometer = parseOdometer(readResponse())
+
+        // --- Fuel Data ---
+        sendCommand("015E")
+        val fuelRate = parseFuelRate(readResponse())
+
+        sendCommand("012F")
+        val fuelLevel = parseFuelLevel(readResponse())
+
+        return mapOf(
+            "RPM" to rpm,
+            "SPEED" to speed,
+            "GEAR" to gear,
+            "THROTTLE" to throttle,
+            "BRAKE_FRONT" to brakeFront,
+            "BRAKE_REAR" to brakeRear,
+            "LEAN_BIKE" to leanBike,
+            "COOLANT" to coolant,
+            "ODOMETER" to odometer.toInt(), // Lossy for Map, but we'll use a better way later
+            "FUEL_RATE" to (fuelRate * 100).toInt(), // Scale for Map
+            "FUEL_LEVEL" to fuelLevel
+        )
+    }
+
+    // Sweeps a range of CAN diagnostic headers and UDS "read data by identifier" (service 22)
+    // DIDs, so an unknown value (e.g. fuel level, which isn't exposed via any standard PID on
+    // this ECU) can be hunted for by hand: run this, then compare which (header, DID) pairs
+    // return a plausible value against a known real-world state (e.g. right after a fill-up).
+    suspend fun sweepHeadersAndDids(
+        headers: List<String> = DEFAULT_SWEEP_HEADERS,
+        dids: List<String> = DEFAULT_SWEEP_DIDS
+    ) {
+        if (!_isConnected.value) return
+        _sweepRunning.value = true
+        _sweepResults.value = emptyList()
+        try {
+            withContext(Dispatchers.IO) {
+                ioMutex.withLock {
+                    for (header in headers) {
+                        sendCommand("ATSH$header")
+                        delay(50.milliseconds)
+                        readResponse()
+
+                        for (did in dids) {
+                            sendCommand("22$did")
+                            delay(80.milliseconds)
+                            val response = readResponse()
+                            _sweepResults.value = _sweepResults.value + ObdSweepEntry(header, did, response)
+                        }
+                    }
+                    // Restore the header the normal polling loop expects.
+                    sendCommand("ATSH7E0")
+                    delay(50.milliseconds)
+                    readResponse()
+                }
+            }
+        } finally {
+            _sweepRunning.value = false
         }
     }
 
@@ -343,5 +398,20 @@ class BluetoothOBDManager(private val context: Context) {
     companion object {
         private const val PREFS_NAME = "obd_prefs"
         private const val KEY_DEVICE_ADDRESS = "device_address"
+
+        // Standard 11-bit CAN diagnostic request headers (7E0-7E7); 7E0/7E1 are the two
+        // already known to answer (engine ECU / ABS-IMU), the rest are unconfirmed.
+        val DEFAULT_SWEEP_HEADERS = (0x7E0..0x7E7).map { it.toString(16).uppercase() }
+
+        // DID neighborhoods around the manufacturer PIDs already confirmed to work
+        // (222503 odometer, 22D10D lean, 222B05/222B06 brakes, 2243F7 gear) - UDS DID
+        // tables are commonly allocated in contiguous blocks per subsystem, so a value
+        // like fuel level is more likely to sit near one of these than at a random address.
+        val DEFAULT_SWEEP_DIDS: List<String> =
+            hexRange(0x2500, 0x250F) + hexRange(0xD100, 0xD11F) +
+            hexRange(0x2B00, 0x2B0F) + hexRange(0x43F0, 0x43FF)
+
+        private fun hexRange(start: Int, end: Int): List<String> =
+            (start..end).map { it.toString(16).uppercase().padStart(4, '0') }
     }
 }

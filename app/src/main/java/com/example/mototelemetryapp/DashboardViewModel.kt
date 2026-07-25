@@ -118,6 +118,14 @@ class DashboardViewModel : ViewModel() {
     val obdConnected = _obdConnected.asStateFlow()
     private var obdConnectedCollectJob: Job? = null
 
+    private val _obdSweepRunning = MutableStateFlow(false)
+    val obdSweepRunning = _obdSweepRunning.asStateFlow()
+    private var obdSweepRunningCollectJob: Job? = null
+
+    private val _obdSweepResults = MutableStateFlow<List<ObdSweepEntry>>(emptyList())
+    val obdSweepResults = _obdSweepResults.asStateFlow()
+    private var obdSweepResultsCollectJob: Job? = null
+
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as TelemetryService.LocalBinder
@@ -128,6 +136,14 @@ class DashboardViewModel : ViewModel() {
             obdConnectedCollectJob = telemetryService?.obdConnected?.let { flow ->
                 viewModelScope.launch { flow.collect { _obdConnected.value = it } }
             }
+            obdSweepRunningCollectJob?.cancel()
+            obdSweepRunningCollectJob = telemetryService?.obdSweepRunning?.let { flow ->
+                viewModelScope.launch { flow.collect { _obdSweepRunning.value = it } }
+            }
+            obdSweepResultsCollectJob?.cancel()
+            obdSweepResultsCollectJob = telemetryService?.obdSweepResults?.let { flow ->
+                viewModelScope.launch { flow.collect { _obdSweepResults.value = it } }
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -135,6 +151,9 @@ class DashboardViewModel : ViewModel() {
             _isServiceBound.value = false
             obdConnectedCollectJob?.cancel()
             _obdConnected.value = false
+            obdSweepRunningCollectJob?.cancel()
+            obdSweepResultsCollectJob?.cancel()
+            _obdSweepRunning.value = false
         }
     }
 
@@ -143,6 +162,12 @@ class DashboardViewModel : ViewModel() {
     fun connectObd(address: String) {
         viewModelScope.launch {
             telemetryService?.connectObd(address)
+        }
+    }
+
+    fun runObdSweep() {
+        viewModelScope.launch {
+            telemetryService?.runObdSweep()
         }
     }
 
@@ -162,6 +187,9 @@ class DashboardViewModel : ViewModel() {
         telemetryService = null
         obdConnectedCollectJob?.cancel()
         _obdConnected.value = false
+        obdSweepRunningCollectJob?.cancel()
+        obdSweepResultsCollectJob?.cancel()
+        _obdSweepRunning.value = false
     }
 
     // Servis bağlıyken akışı expose et

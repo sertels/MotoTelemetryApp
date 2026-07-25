@@ -51,4 +51,8 @@
     <string name="obd_connected">OBD Bağlı</string>
     <string name="obd_disconnected">OBD Bağlı Değil</string>
     <string name="obd_no_paired_devices">Eşleşmiş Bluetooth cihazı yok. Önce OBD adaptörünü Bluetooth ayarlarından eşleştirin.</string>
+    <string name="obd_run_sweep">Tanı taraması çalıştır</string>
+    <string name="obd_sweep_running">Başlıklar/DID\'ler taranıyor…</string>
+    <string name="obd_sweep_done">Tarama tamamlandı</string>
+    <string name="obd_sweep_hint">CAN başlıkları ve UDS tanımlayıcıları yanıt için taranıyor. Bu yaklaşık bir dakika sürer.</string>
 </resources>
