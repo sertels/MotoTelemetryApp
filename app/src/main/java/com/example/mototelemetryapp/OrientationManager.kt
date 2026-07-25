@@ -7,6 +7,7 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 class OrientationManager(context: Context) : SensorEventListener {
@@ -56,10 +57,17 @@ class OrientationManager(context: Context) : SensorEventListener {
                 val orientation = FloatArray(3)
                 SensorManager.getOrientation(rotationMatrix, orientation)
 
-                // Roll (Z ekseni etrafında dönüş) -> Radyanı dereceye çeviriyoruz
-                // Bu değer motorun sağa/sola yatışını temsil eder.
-                rawRoll = Math.toDegrees(orientation[2].toDouble()).toFloat()
-                _leanAngle.value = normalizeAngle(rawRoll - rollOffset)
+                val pitchDeg = Math.toDegrees(orientation[1].toDouble())
+
+                // Roll only represents bike lean while the phone sits roughly upright.
+                // Near pitch = +/-90 deg (phone lying flat, e.g. on a car seat) the
+                // azimuth/roll Euler decomposition hits a gimbal-lock singularity and
+                // roll swings wildly for tiny movements, so readings in that zone are
+                // dropped rather than recorded as if they were a real lean angle.
+                if (abs(pitchDeg) < GIMBAL_LOCK_PITCH_THRESHOLD_DEG) {
+                    rawRoll = Math.toDegrees(orientation[2].toDouble()).toFloat()
+                    _leanAngle.value = normalizeAngle(rawRoll - rollOffset)
+                }
             }
             Sensor.TYPE_ACCELEROMETER -> {
                 val x = event.values[0]
@@ -86,5 +94,6 @@ class OrientationManager(context: Context) : SensorEventListener {
     companion object {
         private const val PREFS_NAME = "orientation_prefs"
         private const val KEY_ROLL_OFFSET = "roll_offset"
+        private const val GIMBAL_LOCK_PITCH_THRESHOLD_DEG = 65.0
     }
 }
