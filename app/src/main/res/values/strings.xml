@@ -61,4 +61,7 @@
     <string name="obd_check_engine">CHECK ENGINE</string>
     <string name="obd_dtc_title">Diagnostic Trouble Codes</string>
     <string name="obd_dtc_none_stored">Check-engine light is on, but no stored codes were read yet.</string>
+    <string name="obd_clear_dtcs">Clear Codes</string>
+    <string name="obd_clear_dtcs_title">Clear Diagnostic Codes?</string>
+    <string name="obd_clear_dtcs_message">This erases stored trouble codes, turns off the check-engine light, and resets the ECU\'s readiness monitors. If the underlying fault is still present, it may come back within the next drive cycle.</string>
 </resources>

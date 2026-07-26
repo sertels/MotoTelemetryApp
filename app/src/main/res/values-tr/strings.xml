@@ -61,4 +61,7 @@
     <string name="obd_check_engine">MOTOR ARIZASI</string>
     <string name="obd_dtc_title">Arıza Kodları</string>
     <string name="obd_dtc_none_stored">Motor arıza lambası yanıyor ama henüz kayıtlı kod okunmadı.</string>
+    <string name="obd_clear_dtcs">Kodları Temizle</string>
+    <string name="obd_clear_dtcs_title">Arıza Kodları Temizlensin mi?</string>
+    <string name="obd_clear_dtcs_message">Bu işlem kayıtlı arıza kodlarını siler, arıza lambasını kapatır ve ECU\'nun hazırlık izleyicilerini sıfırlar. Altta yatan arıza hâlâ mevcutsa bir sonraki sürüş döngüsünde tekrar oluşabilir.</string>
 </resources>

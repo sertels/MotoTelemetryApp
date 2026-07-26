@@ -62,7 +62,8 @@ fun DashboardScreen(
     obdSweepResults: List<ObdSweepEntry> = emptyList(),
     onRunObdSweep: () -> Unit = {},
     obdMilOn: Boolean = false,
-    obdDtcCodes: List<String> = emptyList()
+    obdDtcCodes: List<String> = emptyList(),
+    onClearObdDtcs: () -> Unit = {}
 ) {
     val currentLean = if (leanSource == LeanSource.PHONE) data?.leanAnglePhone else data?.leanAngleBike
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -91,7 +92,7 @@ fun DashboardScreen(
                 )
                 if (obdMilOn) {
                     Spacer(modifier = Modifier.height(6.dp))
-                    CheckEngineBadge(dtcCodes = obdDtcCodes)
+                    CheckEngineBadge(dtcCodes = obdDtcCodes, onClearDtcs = onClearObdDtcs)
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 SpeedRpmCard(data, isLandscape = true)
@@ -136,7 +137,7 @@ fun DashboardScreen(
                 LiveIndicator()
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (obdMilOn) {
-                        CheckEngineBadge(dtcCodes = obdDtcCodes)
+                        CheckEngineBadge(dtcCodes = obdDtcCodes, onClearDtcs = onClearObdDtcs)
                     }
                     ObdStatusBadge(
                         connected = obdConnected,
@@ -322,8 +323,13 @@ fun ObdSweepDialog(running: Boolean, results: List<ObdSweepEntry>, onDismiss: ()
 }
 
 @Composable
-fun CheckEngineBadge(dtcCodes: List<String>, modifier: Modifier = Modifier) {
+fun CheckEngineBadge(
+    dtcCodes: List<String>,
+    onClearDtcs: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
     var showDialog by remember { mutableStateOf(false) }
+    var showClearConfirm by remember { mutableStateOf(false) }
 
     Row(
         modifier = modifier
@@ -353,6 +359,11 @@ fun CheckEngineBadge(dtcCodes: List<String>, modifier: Modifier = Modifier) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showDialog = false },
             confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showClearConfirm = true }) {
+                    Text(stringResource(R.string.obd_clear_dtcs), color = Color(0xFFFF8A80))
+                }
+            },
+            dismissButton = {
                 androidx.compose.material3.TextButton(onClick = { showDialog = false }) {
                     Text(stringResource(R.string.cancel))
                 }
@@ -379,6 +390,35 @@ fun CheckEngineBadge(dtcCodes: List<String>, modifier: Modifier = Modifier) {
                         }
                     }
                 }
+            },
+            containerColor = Color(0xFF1C1C1C)
+        )
+    }
+
+    if (showClearConfirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showClearConfirm = false },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    onClearDtcs()
+                    showClearConfirm = false
+                    showDialog = false
+                }) {
+                    Text(stringResource(R.string.obd_clear_dtcs), color = Color(0xFFFF8A80))
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showClearConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+            title = { Text(stringResource(R.string.obd_clear_dtcs_title), color = Color.White) },
+            text = {
+                Text(
+                    stringResource(R.string.obd_clear_dtcs_message),
+                    color = TelemetryOnSurfaceMuted,
+                    fontSize = 12.sp
+                )
             },
             containerColor = Color(0xFF1C1C1C)
         )

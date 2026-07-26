@@ -91,6 +91,8 @@ class TelemetryService : Service() {
     val obdMilOn get() = bluetoothOBDManager?.milOn
     val obdDtcCodes get() = bluetoothOBDManager?.dtcCodes
 
+    suspend fun clearObdDtcs(): Boolean = bluetoothOBDManager?.clearDtcs() ?: false
+
     suspend fun runObdSweep() {
         bluetoothOBDManager?.sweepHeadersAndDids()
     }

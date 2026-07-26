@@ -210,6 +210,27 @@ class BluetoothOBDManager(private val context: Context) {
         }
     }
 
+    // Mode 04: erases stored DTCs, turns off the MIL, and resets the ECU's readiness monitors.
+    // If the underlying fault is still active it can set a new code within the next drive cycle.
+    suspend fun clearDtcs(): Boolean = withContext(Dispatchers.IO) {
+        if (!_isConnected.value) return@withContext false
+
+        ioMutex.withLock {
+            sendCommand("ATSH7E0")
+            delay(50.milliseconds)
+
+            sendCommand("04")
+            val response = readResponse().replace(" ", "")
+            val success = response.contains("44")
+
+            if (success) {
+                _milOn.value = false
+                _dtcCodes.value = emptyList()
+            }
+            success
+        }
+    }
+
     // One full read cycle across both known headers. Must only run while ioMutex is held.
     private suspend fun pollOnce(): Map<String, Int> {
         // --- Engine Data (Header 7E0) ---

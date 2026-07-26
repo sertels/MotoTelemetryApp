@@ -191,6 +191,12 @@ class DashboardViewModel : ViewModel() {
         }
     }
 
+    fun clearObdDtcs() {
+        viewModelScope.launch {
+            telemetryService?.clearObdDtcs()
+        }
+    }
+
     // autoCreate = false only attaches to an already-running (started) service instead of
     // silently spinning up an inert one that never had onStartCommand (and its sensor loop) run.
     fun bindService(context: Context, autoCreate: Boolean = true) {

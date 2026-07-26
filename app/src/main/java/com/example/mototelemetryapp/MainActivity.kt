@@ -228,7 +228,8 @@ class MainActivity : AppCompatActivity() {
                                         obdSweepResults = obdSweepResults,
                                         onRunObdSweep = { dashboardViewModel.runObdSweep() },
                                         obdMilOn = obdMilOn,
-                                        obdDtcCodes = obdDtcCodes
+                                        obdDtcCodes = obdDtcCodes,
+                                        onClearObdDtcs = { dashboardViewModel.clearObdDtcs() }
                                     )
                                 } else {
                                     val sessions by dashboardViewModel.sessions.collectAsState()
