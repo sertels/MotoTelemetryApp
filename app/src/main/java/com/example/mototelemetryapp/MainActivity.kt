@@ -392,6 +392,11 @@ class MainActivity : AppCompatActivity() {
                                             dashboardViewModel.bindService(context)
                                         },
                                         onStopService = {
+                                            // stopService() alone won't destroy the service while
+                                            // this screen still holds a BIND_AUTO_CREATE binding to
+                                            // it - unbind first so it can actually stop, otherwise
+                                            // GPS/OBD polling and DB writes keep running silently.
+                                            dashboardViewModel.unbindService(context)
                                             stopService(Intent(this@MainActivity, TelemetryService::class.java))
                                             dashboardViewModel.setTrackingActive(false)
                                         },
@@ -771,8 +776,11 @@ fun MainScreen(
             Spacer(modifier = Modifier.height(14.dp))
         }
 
+        // A REPLACE restore mid-ride deletes the session row the service is still writing to,
+        // silently losing the whole ride, so both actions are blocked while tracking is active.
         OutlinedButton(
             onClick = onBackup,
+            enabled = !isTrackingActive,
             modifier = pillModifier,
             shape = pillShape,
             border = BorderStroke(1.5.dp, TelemetryAccent),
@@ -789,6 +797,7 @@ fun MainScreen(
                 showRestoreDialog = true
                 onOpenRestore()
             },
+            enabled = !isTrackingActive,
             modifier = pillModifier,
             shape = pillShape,
             border = BorderStroke(1.5.dp, TelemetryOnSurfaceMuted),

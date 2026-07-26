@@ -32,6 +32,10 @@ import kotlin.math.max
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 
+// Fixes below which GPS jitter (rather than real movement) dominates distanceTo() deltas.
+private const val MAX_GPS_ACCURACY_METERS = 20f
+private const val MIN_MOVING_SPEED_MPS = 1f // ~3.6 km/h
+
 class TelemetryService : Service() {
 
     private val channelId = "TelemetryServiceChannel"
@@ -212,12 +216,19 @@ class TelemetryService : Service() {
             object : LocationCallback() {
                 override fun onLocationResult(locationResult: LocationResult) {
                     val newLocation = locationResult.lastLocation ?: return
-                    
-                    // Accumulate distance
+
+                    // Without this, ordinary GPS jitter while stationary (e.g. sitting at a red
+                    // light during the OBD grace period) keeps accruing phantom distance, since
+                    // distanceTo() was summed for every fix with no accuracy/motion floor.
+                    val isAccurateEnough = newLocation.accuracy <= MAX_GPS_ACCURACY_METERS
+                    val isMoving = !newLocation.hasSpeed() || newLocation.speed >= MIN_MOVING_SPEED_MPS
+
                     lastLocation?.let {
-                        totalGpsDistanceMeters += it.distanceTo(newLocation)
+                        if (isAccurateEnough && isMoving) {
+                            totalGpsDistanceMeters += it.distanceTo(newLocation)
+                        }
                     }
-                    
+
                     lastLocation = newLocation
                 }
             },
