@@ -63,6 +63,7 @@ fun DashboardScreen(
     obdSweepProgress: Pair<Int, Int> = 0 to 0,
     onRunObdSweep: () -> Unit = {},
     onCancelObdSweep: () -> Unit = {},
+    onDisconnectObd: () -> Unit = {},
     obdConnectError: String? = null,
     obdMilOn: Boolean = false,
     obdDtcCodes: List<String> = emptyList(),
@@ -93,7 +94,8 @@ fun DashboardScreen(
                     sweepResults = obdSweepResults,
                     sweepProgress = obdSweepProgress,
                     onRunSweep = onRunObdSweep,
-                    onCancelSweep = onCancelObdSweep
+                    onCancelSweep = onCancelObdSweep,
+                    onDisconnect = onDisconnectObd
                 )
                 if (obdMilOn) {
                     Spacer(modifier = Modifier.height(6.dp))
@@ -156,7 +158,8 @@ fun DashboardScreen(
                         sweepResults = obdSweepResults,
                         sweepProgress = obdSweepProgress,
                         onRunSweep = onRunObdSweep,
-                        onCancelSweep = onCancelObdSweep
+                        onCancelSweep = onCancelObdSweep,
+                        onDisconnect = onDisconnectObd
                     )
                 }
             }
@@ -222,6 +225,7 @@ fun ObdStatusBadge(
     sweepProgress: Pair<Int, Int> = 0 to 0,
     onRunSweep: () -> Unit = {},
     onCancelSweep: () -> Unit = {},
+    onDisconnect: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -280,6 +284,13 @@ fun ObdStatusBadge(
                         menuExpanded = false
                         showSweepDialog = true
                         onRunSweep()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.obd_disconnect)) },
+                    onClick = {
+                        menuExpanded = false
+                        onDisconnect()
                     }
                 )
             }

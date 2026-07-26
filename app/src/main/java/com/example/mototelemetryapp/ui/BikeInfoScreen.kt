@@ -41,6 +41,9 @@ private const val COOLANT_HOT_THRESHOLD_C = 100
 @Composable
 fun BikeInfoScreen(
     obdConnected: Boolean,
+    onFetchObdDevices: () -> List<Pair<String, String>>,
+    onConnectObd: (String) -> Unit,
+    onDisconnectObd: () -> Unit = {},
     odometerKm: Int?,
     coolantC: Int?,
     fuelLevelPct: Int?,
@@ -72,28 +75,17 @@ fun BikeInfoScreen(
                 fontSize = 21.sp,
                 fontWeight = FontWeight.Bold
             )
-            Row(
-                modifier = Modifier
-                    .background(Color(0xFF1A1A1A), RoundedCornerShape(100.dp))
-                    .border(1.dp, CardBorderSoft, RoundedCornerShape(100.dp))
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(if (obdConnected) TelemetryAccent else Color(0xFF5A5A5A))
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = stringResource(if (obdConnected) R.string.obd_connected else R.string.obd_disconnected),
-                    color = if (obdConnected) Color.White else TelemetryOnSurfaceMuted,
-                    fontSize = 10.sp,
-                    letterSpacing = 0.5.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
+            ObdStatusBadge(
+                connected = obdConnected,
+                onFetchDevices = onFetchObdDevices,
+                onConnect = onConnectObd,
+                onDisconnect = onDisconnectObd,
+                sweepRunning = obdSweepRunning,
+                sweepResults = obdSweepResults,
+                sweepProgress = obdSweepProgress,
+                onRunSweep = onRunObdSweep,
+                onCancelSweep = onCancelObdSweep
+            )
         }
 
         Column(

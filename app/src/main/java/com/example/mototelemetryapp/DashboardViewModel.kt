@@ -277,6 +277,10 @@ class DashboardViewModel : ViewModel() {
         obdSweepJob = null
     }
 
+    fun disconnectObd() {
+        telemetryService?.disconnectObd()
+    }
+
     fun clearObdDtcs() {
         viewModelScope.launch {
             telemetryService?.clearObdDtcs()

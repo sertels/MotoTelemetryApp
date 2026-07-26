@@ -85,6 +85,10 @@ class TelemetryService : Service() {
     suspend fun connectObd(address: String): Boolean =
         bluetoothOBDManager?.connectToDevice(address) ?: false
 
+    fun disconnectObd() {
+        bluetoothOBDManager?.disconnect()
+    }
+
     val obdSweepRunning get() = bluetoothOBDManager?.sweepRunning
     val obdSweepResults get() = bluetoothOBDManager?.sweepResults
     val obdSweepProgress get() = bluetoothOBDManager?.sweepProgress

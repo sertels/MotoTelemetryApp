@@ -363,6 +363,7 @@ class MainActivity : AppCompatActivity() {
                                         obdSweepProgress = obdSweepProgress,
                                         onRunObdSweep = { dashboardViewModel.runObdSweep() },
                                         onCancelObdSweep = { dashboardViewModel.cancelObdSweep() },
+                                        onDisconnectObd = { dashboardViewModel.disconnectObd() },
                                         obdConnectError = obdConnectError,
                                         obdMilOn = obdMilOn,
                                         obdDtcCodes = obdDtcCodes,
@@ -427,6 +428,13 @@ class MainActivity : AppCompatActivity() {
                                 HistoryScreen(records = history)
                             }
                             composable("bikeinfo") {
+                                // Bike Info is reachable directly from the bottom nav without
+                                // ever visiting the Panel tab, so ensure the service (and with
+                                // it, the OBD manager) actually exists before letting the user
+                                // try to connect a device from here.
+                                LaunchedEffect(Unit) {
+                                    if (!isBound) dashboardViewModel.bindService(context)
+                                }
                                 val obdConnected by dashboardViewModel.obdConnected.collectAsState()
                                 val obdMilOn by dashboardViewModel.obdMilOn.collectAsState()
                                 val obdDtcCodes by dashboardViewModel.obdDtcCodes.collectAsState()
@@ -437,6 +445,9 @@ class MainActivity : AppCompatActivity() {
 
                                 BikeInfoScreen(
                                     obdConnected = obdConnected,
+                                    onFetchObdDevices = { dashboardViewModel.getPairedObdDevices() },
+                                    onConnectObd = { address -> dashboardViewModel.connectObd(context, address) },
+                                    onDisconnectObd = { dashboardViewModel.disconnectObd() },
                                     odometerKm = obdRawData["ODOMETER"],
                                     coolantC = obdRawData["COOLANT"],
                                     fuelLevelPct = obdRawData["FUEL_LEVEL"],
