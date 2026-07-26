@@ -5,6 +5,8 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.view.Surface
+import android.view.WindowManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlin.math.abs
@@ -16,6 +18,13 @@ class OrientationManager(context: Context) : SensorEventListener {
     private val rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
     private val accelSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    // getOrientation()'s roll/pitch are defined relative to the phone's natural (portrait)
+    // orientation, not however it's physically mounted - on a landscape bike mount, roll and
+    // pitch swap meaning unless the rotation matrix is remapped to match. Read from
+    // WindowManager (not Context.getDisplay(), which throws on a plain Service context) so this
+    // self-adapts to whatever orientation the phone is actually mounted in.
+    private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
     // Raw roll before the mount-tilt offset is applied.
     private var rawRoll = 0f
@@ -54,8 +63,23 @@ class OrientationManager(context: Context) : SensorEventListener {
                 val rotationMatrix = FloatArray(9)
                 SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
 
+                val remappedMatrix = FloatArray(9)
+                @Suppress("DEPRECATION")
+                when (windowManager.defaultDisplay.rotation) {
+                    Surface.ROTATION_90 -> SensorManager.remapCoordinateSystem(
+                        rotationMatrix, SensorManager.AXIS_Y, SensorManager.AXIS_MINUS_X, remappedMatrix
+                    )
+                    Surface.ROTATION_180 -> SensorManager.remapCoordinateSystem(
+                        rotationMatrix, SensorManager.AXIS_MINUS_X, SensorManager.AXIS_MINUS_Y, remappedMatrix
+                    )
+                    Surface.ROTATION_270 -> SensorManager.remapCoordinateSystem(
+                        rotationMatrix, SensorManager.AXIS_MINUS_Y, SensorManager.AXIS_X, remappedMatrix
+                    )
+                    else -> rotationMatrix.copyInto(remappedMatrix)
+                }
+
                 val orientation = FloatArray(3)
-                SensorManager.getOrientation(rotationMatrix, orientation)
+                SensorManager.getOrientation(remappedMatrix, orientation)
 
                 val pitchDeg = Math.toDegrees(orientation[1].toDouble())
 
