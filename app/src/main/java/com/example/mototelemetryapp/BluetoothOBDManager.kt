@@ -7,8 +7,11 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -25,7 +28,10 @@ data class ObdSweepEntry(val header: String, val did: String, val response: Stri
 
 data class PidMapping(val header: String, val command: String, val signal: String)
 
-class BluetoothOBDManager(private val context: Context) {
+// dataLoopScope must outlive whatever UI coroutine (e.g. viewModelScope) triggers connect() -
+// pass the owning Service's own scope, not one tied to an Activity/ViewModel, or the poll loop
+// gets cancelled the moment that UI component is destroyed even though the ride keeps recording.
+class BluetoothOBDManager(private val context: Context, private val dataLoopScope: CoroutineScope) {
 
     private val tag = "BluetoothOBDManager"
     private val obdUuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
@@ -68,6 +74,7 @@ class BluetoothOBDManager(private val context: Context) {
     val dtcCodes = _dtcCodes.asStateFlow()
 
     private var dataLoopTick = 0
+    private var dataLoopJob: Job? = null
 
     // Tracks the ELM327's currently active diagnostic header so redundant ATSH commands can
     // be skipped - each one costs a settle delay plus a round trip, and pollOnce() was
@@ -150,7 +157,10 @@ class BluetoothOBDManager(private val context: Context) {
                     setPreferredDevice(obdDevice.address)
                 }
                 Log.d(tag, "OBD2 Bağlantısı Başarılı.")
-                startDataLoop()
+                // Launched on dataLoopScope (not awaited here) so the poll loop's lifetime is
+                // tied to the owning Service, not to whichever coroutine called connect().
+                dataLoopJob?.cancel()
+                dataLoopJob = dataLoopScope.launch { startDataLoop() }
                 return@withContext true
             }
         } catch (e: IOException) {
@@ -538,6 +548,8 @@ class BluetoothOBDManager(private val context: Context) {
     fun disconnect() {
         try {
             _isConnected.value = false
+            dataLoopJob?.cancel()
+            dataLoopJob = null
             socket?.close()
             _milOn.value = false
             _dtcCodes.value = emptyList()
@@ -552,6 +564,12 @@ class BluetoothOBDManager(private val context: Context) {
         private const val PREFS_NAME = "obd_prefs"
         private const val KEY_DEVICE_ADDRESS = "device_address"
         private const val DTC_POLL_INTERVAL_TICKS = 50 // ~5s at the 100ms data-loop cadence
+
+        // For callers (e.g. ObdAutoStartReceiver) that just need to peek at the stored device
+        // address without constructing a full manager instance (sockets, mutexes, a data-loop
+        // scope) that they'll never actually use.
+        fun getPreferredDeviceAddress(context: Context): String? =
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_DEVICE_ADDRESS, null)
 
         // Mirrors exactly what pollOnce() below requests - the confirmed, working PIDs, kept
         // here for the Bike Info screen's reference table rather than duplicating this list

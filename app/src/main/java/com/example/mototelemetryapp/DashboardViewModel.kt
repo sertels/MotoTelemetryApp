@@ -198,12 +198,22 @@ class DashboardViewModel : ViewModel() {
     val obdRawData = _obdRawData.asStateFlow()
     private var obdRawDataCollectJob: Job? = null
 
+    private var trackingActiveCollectJob: Job? = null
+
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as TelemetryService.LocalBinder
             telemetryService = binder.getService()
             _isServiceBound.value = true
-            _isTrackingActive.value = true
+            // Binding (e.g. just opening Panel or Bike Info) isn't the same as a ride actually
+            // being recorded - observe the service's real tracking state instead of assuming
+            // true, otherwise Backup/Restore's "don't run mid-ride" guard gets stuck disabled.
+            // Collected (not read once) since onStartCommand's flag flip and this bind callback
+            // are dispatched independently with no ordering guarantee between them.
+            trackingActiveCollectJob?.cancel()
+            trackingActiveCollectJob = telemetryService?.isTrackingActive?.let { flow ->
+                viewModelScope.launch { flow.collect { _isTrackingActive.value = it } }
+            }
             obdConnectedCollectJob?.cancel()
             obdConnectedCollectJob = telemetryService?.obdConnected?.let { flow ->
                 viewModelScope.launch { flow.collect { _obdConnected.value = it } }
@@ -237,6 +247,9 @@ class DashboardViewModel : ViewModel() {
         override fun onServiceDisconnected(name: ComponentName?) {
             telemetryService = null
             _isServiceBound.value = false
+            // _isTrackingActive is intentionally left as-is - it reflects whether a ride is
+            // actually being recorded, independent of whether the UI is currently bound.
+            trackingActiveCollectJob?.cancel()
             obdConnectedCollectJob?.cancel()
             _obdConnected.value = false
             obdSweepRunningCollectJob?.cancel()

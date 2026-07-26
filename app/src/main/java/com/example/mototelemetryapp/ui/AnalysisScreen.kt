@@ -60,7 +60,7 @@ fun AnalysisScreen(
             )
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(sessions) { session ->
+                items(sessions, key = { it.id }) { session ->
                     SessionCard(
                         session = session,
                         onClick = { selectedSession = session },
@@ -129,7 +129,10 @@ fun SessionCard(
                     Text(text = dateStr, color = Color.Gray, fontSize = 12.sp)
                 }
                 Row {
-                    IconButton(onClick = { showEditDialog = true }) {
+                    IconButton(onClick = {
+                        newName = session.name
+                        showEditDialog = true
+                    }) {
                         Icon(Icons.Default.Edit, contentDescription = null, tint = Color.Gray)
                     }
                     IconButton(onClick = { showDeleteDialog = true }) {
@@ -160,7 +163,10 @@ fun SessionCard(
 
     if (showEditDialog) {
         AlertDialog(
-            onDismissRequest = { showEditDialog = false },
+            onDismissRequest = {
+                showEditDialog = false
+                newName = session.name
+            },
             title = { Text(stringResource(R.string.rename_ride)) },
             text = {
                 TextField(value = newName, onValueChange = { newName = it })

@@ -55,7 +55,12 @@ class TelemetryService : Service() {
     private var maxLeanRight: Float = 0f
     private var maxCoolantTemp: Int = 0
     private var totalFuelConsumedLiters: Float = 0f
-    private var trackingStarted = false
+    // A StateFlow (not a plain read-once Boolean) so DashboardViewModel can observe it directly
+    // instead of racing: onStartCommand() and bindService()'s onServiceConnected() are both
+    // dispatched asynchronously with no ordering guarantee between them, so a one-time read at
+    // bind time could catch this still false immediately after Start was pressed.
+    private val _trackingStarted = MutableStateFlow(false)
+    val isTrackingActive = _trackingStarted.asStateFlow()
 
     // Set while the OBD link is down and we're waiting to see if it comes back before
     // finalizing the ride (see onObdLinkLost/onObdLinkRestored).
@@ -115,7 +120,7 @@ class TelemetryService : Service() {
         createNotificationChannel()
 
         // Initialize components
-        bluetoothOBDManager = BluetoothOBDManager(this)
+        bluetoothOBDManager = BluetoothOBDManager(this, serviceScope)
         orientationManager = OrientationManager(this)
         db = AppDatabase.getDatabase(this)
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
@@ -196,8 +201,8 @@ class TelemetryService : Service() {
         // onStartCommand can fire again while already tracking (e.g. the OBD auto-start
         // receiver re-triggering on a flaky Bluetooth reconnect) - guard against spinning up
         // a second session/telemetry loop on top of the running one.
-        if (!trackingStarted) {
-            trackingStarted = true
+        if (!_trackingStarted.value) {
+            _trackingStarted.value = true
             startLocationUpdates()
             orientationManager?.start()
             startTelemetryTracking()

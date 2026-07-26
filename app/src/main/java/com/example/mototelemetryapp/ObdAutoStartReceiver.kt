@@ -24,7 +24,7 @@ class ObdAutoStartReceiver : BroadcastReceiver() {
             intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
         } ?: return
 
-        val preferredAddress = BluetoothOBDManager(context).getPreferredDeviceAddress() ?: return
+        val preferredAddress = BluetoothOBDManager.getPreferredDeviceAddress(context) ?: return
         if (device.address != preferredAddress) return
 
         ContextCompat.startForegroundService(context, Intent(context, TelemetryService::class.java))

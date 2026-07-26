@@ -124,6 +124,34 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+            // Requested here at the root (not inside MainScreen) since MainScreen is skipped
+            // entirely whenever the service is already bound at first composition - e.g. the
+            // OBD auto-start receiver already started the service before the user ever opened
+            // the Activity, or "Go to panel"/Bike Info bound it - which previously meant these
+            // permissions might never get requested at all on a fresh install.
+            val runtimePermissions = remember {
+                mutableListOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                    Manifest.permission.BLUETOOTH_SCAN,
+                    Manifest.permission.BLUETOOTH_CONNECT
+                ).apply {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        add(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
+            }
+            val permissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestMultiplePermissions()
+            ) { results: Map<String, Boolean> ->
+                if (!results.values.all { it }) {
+                    Log.w("MainActivity", "Not all permissions granted")
+                }
+            }
+            LaunchedEffect(Unit) {
+                permissionLauncher.launch(runtimePermissions.toTypedArray())
+            }
+
             // Service binding management - only bind when activity is created, not on recomposition
             LaunchedEffect(Unit) {
                 // Only attach if a session is already running; don't spin up an inert,
@@ -555,29 +583,6 @@ fun MainScreen(
     onDismissRestore: () -> Unit,
     onConfirmRestore: (fileId: String, mode: RestoreMode) -> Unit
 ) {
-    val permissions = mutableListOf(
-        Manifest.permission.ACCESS_FINE_LOCATION,
-        Manifest.permission.ACCESS_COARSE_LOCATION,
-        Manifest.permission.BLUETOOTH_SCAN,
-        Manifest.permission.BLUETOOTH_CONNECT
-    )
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        permissions.add(Manifest.permission.POST_NOTIFICATIONS)
-    }
-
-    val launcher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { results: Map<String, Boolean> ->
-        val allGranted = results.values.all { it }
-        if (!allGranted) {
-            Log.w("MainActivity", "Not all permissions granted")
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        launcher.launch(permissions.toTypedArray())
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
