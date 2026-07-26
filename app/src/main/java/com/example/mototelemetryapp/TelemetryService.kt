@@ -87,6 +87,7 @@ class TelemetryService : Service() {
 
     val obdSweepRunning get() = bluetoothOBDManager?.sweepRunning
     val obdSweepResults get() = bluetoothOBDManager?.sweepResults
+    val obdSweepProgress get() = bluetoothOBDManager?.sweepProgress
 
     val obdMilOn get() = bluetoothOBDManager?.milOn
     val obdDtcCodes get() = bluetoothOBDManager?.dtcCodes

@@ -51,10 +51,13 @@
     <string name="obd_connected">OBD Bağlı</string>
     <string name="obd_disconnected">OBD Bağlı Değil</string>
     <string name="obd_no_paired_devices">Eşleşmiş Bluetooth cihazı yok. Önce OBD adaptörünü Bluetooth ayarlarından eşleştirin.</string>
+    <string name="obd_connect_failed">OBD cihazına bağlanılamadı. Tekrar deneyin.</string>
     <string name="obd_run_sweep">Tanı taraması çalıştır</string>
     <string name="obd_sweep_running">Başlıklar/DID\'ler taranıyor…</string>
     <string name="obd_sweep_done">Tarama tamamlandı</string>
     <string name="obd_sweep_hint">CAN başlıkları ve UDS tanımlayıcıları yanıt için taranıyor. Bu yaklaşık bir dakika sürer.</string>
+    <string name="obd_sweep_progress">%1$d / %2$d sorgu</string>
+    <string name="obd_sweep_close">Kapat</string>
     <string name="battery_optimization_hint">Ekran kilitlendiğinde kayıt durabilir. Kısıtlamasız pil kullanımına izin vermek için dokunun.</string>
     <string name="auto_start_on_obd_connect">OBD bağlandığında kaydı otomatik başlat</string>
     <string name="ride_grace_period">%1$d dk içinde yeniden bağlanırsa sürüşe devam et</string>
@@ -96,6 +99,7 @@
     <string name="bike_info_battery">AKÜ</string>
     <string name="bike_info_high_tag">YÜKSEK</string>
     <string name="bike_info_no_dtc">Kayıtlı arıza kodu yok.</string>
+    <string name="bike_info_dtc_unknown">Arıza kodlarını görmek için OBD\'ye bağlanın.</string>
     <string name="bike_info_check_engine_count">MOTOR ARIZASI · %1$d kod</string>
     <string name="bike_info_sweep_title">Daha fazla sinyal ara</string>
     <string name="bike_info_sweep_hint">Akü voltajı, emme sıcaklığı, ABS arızaları — henüz eşlenmedi</string>

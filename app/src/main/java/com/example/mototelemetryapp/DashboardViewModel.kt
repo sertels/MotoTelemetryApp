@@ -173,6 +173,19 @@ class DashboardViewModel : ViewModel() {
     val obdSweepResults = _obdSweepResults.asStateFlow()
     private var obdSweepResultsCollectJob: Job? = null
 
+    private val _obdSweepProgress = MutableStateFlow(0 to 0)
+    val obdSweepProgress = _obdSweepProgress.asStateFlow()
+    private var obdSweepProgressCollectJob: Job? = null
+
+    // The coroutine actually running the sweep, so a user-initiated cancel can stop it mid-run
+    // instead of just dismissing the dialog while it keeps probing the bike in the background.
+    private var obdSweepJob: Job? = null
+
+    // One-shot error message for a failed connect attempt (e.g. tapped a device and nothing
+    // visibly happened) - mirrors the backupStatus pattern below.
+    private val _obdConnectError = MutableStateFlow<String?>(null)
+    val obdConnectError = _obdConnectError.asStateFlow()
+
     private val _obdMilOn = MutableStateFlow(false)
     val obdMilOn = _obdMilOn.asStateFlow()
     private var obdMilOnCollectJob: Job? = null
@@ -203,6 +216,10 @@ class DashboardViewModel : ViewModel() {
             obdSweepResultsCollectJob = telemetryService?.obdSweepResults?.let { flow ->
                 viewModelScope.launch { flow.collect { _obdSweepResults.value = it } }
             }
+            obdSweepProgressCollectJob?.cancel()
+            obdSweepProgressCollectJob = telemetryService?.obdSweepProgress?.let { flow ->
+                viewModelScope.launch { flow.collect { _obdSweepProgress.value = it } }
+            }
             obdMilOnCollectJob?.cancel()
             obdMilOnCollectJob = telemetryService?.obdMilOn?.let { flow ->
                 viewModelScope.launch { flow.collect { _obdMilOn.value = it } }
@@ -224,7 +241,9 @@ class DashboardViewModel : ViewModel() {
             _obdConnected.value = false
             obdSweepRunningCollectJob?.cancel()
             obdSweepResultsCollectJob?.cancel()
+            obdSweepProgressCollectJob?.cancel()
             _obdSweepRunning.value = false
+            _obdSweepProgress.value = 0 to 0
             obdMilOnCollectJob?.cancel()
             _obdMilOn.value = false
             obdDtcCodesCollectJob?.cancel()
@@ -236,16 +255,26 @@ class DashboardViewModel : ViewModel() {
 
     fun getPairedObdDevices(): List<Pair<String, String>> = telemetryService?.getPairedObdDevices() ?: emptyList()
 
-    fun connectObd(address: String) {
+    fun connectObd(context: Context, address: String) {
         viewModelScope.launch {
-            telemetryService?.connectObd(address)
+            val connected = telemetryService?.connectObd(address) ?: false
+            if (!connected) {
+                _obdConnectError.value = context.getString(R.string.obd_connect_failed)
+                delay(3000)
+                _obdConnectError.value = null
+            }
         }
     }
 
     fun runObdSweep() {
-        viewModelScope.launch {
+        obdSweepJob = viewModelScope.launch {
             telemetryService?.runObdSweep()
         }
+    }
+
+    fun cancelObdSweep() {
+        obdSweepJob?.cancel()
+        obdSweepJob = null
     }
 
     fun clearObdDtcs() {

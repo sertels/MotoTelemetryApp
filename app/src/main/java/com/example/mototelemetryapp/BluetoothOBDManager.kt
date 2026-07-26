@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration.Companion.milliseconds
 import java.io.IOException
 import java.io.InputStream
@@ -53,6 +54,11 @@ class BluetoothOBDManager(private val context: Context) {
 
     private val _sweepResults = MutableStateFlow<List<ObdSweepEntry>>(emptyList())
     val sweepResults = _sweepResults.asStateFlow()
+
+    // (completed probes, total probes) for the currently running sweep, so the UI can show
+    // real progress instead of an indefinite spinner.
+    private val _sweepProgress = MutableStateFlow(0 to 0)
+    val sweepProgress = _sweepProgress.asStateFlow()
 
     // Check-engine (MIL) status and any stored DTCs, refreshed periodically by the data loop.
     private val _milOn = MutableStateFlow(false)
@@ -105,6 +111,14 @@ class BluetoothOBDManager(private val context: Context) {
             return@withContext false
         }
 
+        // A leftover discovery scan (e.g. from the phone's own Bluetooth settings screen
+        // used to pair the adapter) is a common cause of SPP connect() silently failing.
+        adapter.cancelDiscovery()
+
+        // Closes any socket left over from a previous connect() call before opening a new
+        // one, so switching devices (or retrying) doesn't leak the old RFCOMM channel.
+        closeSocketQuietly()
+
         try {
             socket = obdDevice.createRfcommSocketToServiceRecord(obdUuid)
             socket?.connect()
@@ -113,6 +127,11 @@ class BluetoothOBDManager(private val context: Context) {
 
             if (initELM327()) {
                 _isConnected.value = true
+                if (preferredAddress == null) {
+                    // First-time connect via the name-hint heuristic - remember it too,
+                    // not just explicit picks from connectToDevice().
+                    setPreferredDevice(obdDevice.address)
+                }
                 Log.d(tag, "OBD2 Bağlantısı Başarılı.")
                 startDataLoop()
                 return@withContext true
@@ -120,8 +139,21 @@ class BluetoothOBDManager(private val context: Context) {
         } catch (e: IOException) {
             Log.e(tag, "Bağlantı hatası: ${e.message}")
             disconnect()
+        } catch (e: SecurityException) {
+            Log.e(tag, "Bluetooth izni eksik: ${e.message}")
+            disconnect()
         }
         return@withContext false
+    }
+
+    private fun closeSocketQuietly() {
+        try {
+            socket?.close()
+        } catch (_: IOException) {
+        }
+        socket = null
+        outputStream = null
+        inputStream = null
     }
 
     private suspend fun initELM327(): Boolean {
@@ -144,27 +176,22 @@ class BluetoothOBDManager(private val context: Context) {
         }
     }
 
-    private fun readResponse(): String {
+    private suspend fun readResponse(): String {
         val buffer = ByteArray(1024)
-        var bytes: Int
         val response = StringBuilder()
         try {
-            // Basit bir okuma mantığı - ELM327 yanıtı '>' ile bitirir
-            val startTime = System.currentTimeMillis()
-            val timeout = 2000 // 2 second timeout
-            
-            while (true) {
-                if (System.currentTimeMillis() - startTime > timeout) {
-                    Log.w(tag, "Read response timeout")
-                    break
+            // inputStream.read() blocks with no socket-level timeout, so an ECU that never
+            // answers (e.g. an unconfirmed sweep header) would otherwise hang this call
+            // forever instead of the intended 2s - withTimeoutOrNull enforces it for real.
+            withTimeoutOrNull(2000.milliseconds) {
+                while (true) {
+                    val bytes = inputStream?.read(buffer) ?: -1
+                    if (bytes == -1) break
+                    val part = String(buffer, 0, bytes)
+                    response.append(part)
+                    if (part.contains(">")) break
                 }
-                
-                bytes = inputStream?.read(buffer) ?: -1
-                if (bytes == -1) break
-                val part = String(buffer, 0, bytes)
-                response.append(part)
-                if (part.contains(">")) break
-            }
+            } ?: Log.w(tag, "Read response timeout")
         } catch (e: IOException) {
             Log.e(tag, "Okuma hatası: ${e.message}")
         }
@@ -264,7 +291,10 @@ class BluetoothOBDManager(private val context: Context) {
         sendCommand("22D10D")
         val leanBike = parseLeanBike(readResponse())
 
-        // --- Coolant & Odometer (Standard & UDS) ---
+        // --- Coolant & Odometer (Standard & UDS, header 7E0) ---
+        sendCommand("ATSH7E0")
+        delay(50.milliseconds)
+
         sendCommand("0105")
         val coolant = parseCoolant(readResponse())
 
@@ -304,6 +334,9 @@ class BluetoothOBDManager(private val context: Context) {
         if (!_isConnected.value) return
         _sweepRunning.value = true
         _sweepResults.value = emptyList()
+        val total = headers.size * dids.size
+        var completed = 0
+        _sweepProgress.value = 0 to total
         try {
             withContext(Dispatchers.IO) {
                 ioMutex.withLock {
@@ -317,6 +350,8 @@ class BluetoothOBDManager(private val context: Context) {
                             delay(80.milliseconds)
                             val response = readResponse()
                             _sweepResults.value = _sweepResults.value + ObdSweepEntry(header, did, response)
+                            completed++
+                            _sweepProgress.value = completed to total
                         }
                     }
                     // Restore the header the normal polling loop expects.
@@ -327,6 +362,7 @@ class BluetoothOBDManager(private val context: Context) {
             }
         } finally {
             _sweepRunning.value = false
+            _sweepProgress.value = 0 to 0
         }
     }
 
@@ -527,9 +563,13 @@ class BluetoothOBDManager(private val context: Context) {
             PidMapping("7E0", "03", "Stored DTCs")
         )
 
-        // Standard 11-bit CAN diagnostic request headers (7E0-7E7); 7E0/7E1 are the two
-        // already known to answer (engine ECU / ABS-IMU), the rest are unconfirmed.
-        val DEFAULT_SWEEP_HEADERS = (0x7E0..0x7E7).map { it.toString(16).uppercase() }
+        // Only the two headers already confirmed to answer (engine ECU 7E0 / ABS-IMU 7E1).
+        // 7E2-7E7 are unconfirmed CAN addresses that could belong to any other ECU on the
+        // bus (cluster, immobilizer, etc.) - probing those with unsolicited UDS requests is
+        // what's suspected of causing the bike's dash/start-stop hiccup during a sweep, so
+        // they're deliberately excluded from the default and would need to be opted into
+        // explicitly with full awareness of the risk.
+        val DEFAULT_SWEEP_HEADERS = listOf("7E0", "7E1")
 
         // DID neighborhoods around the manufacturer PIDs already confirmed to work
         // (222503 odometer, 22D10D lean, 222B05/222B06 brakes, 2243F7 gear) - UDS DID

@@ -51,10 +51,13 @@
     <string name="obd_connected">OBD Connected</string>
     <string name="obd_disconnected">OBD Disconnected</string>
     <string name="obd_no_paired_devices">No paired Bluetooth devices. Pair your OBD adapter in Bluetooth settings first.</string>
+    <string name="obd_connect_failed">Couldn\'t connect to the OBD device. Try again.</string>
     <string name="obd_run_sweep">Run diagnostic sweep</string>
     <string name="obd_sweep_running">Sweeping headers/DIDs…</string>
     <string name="obd_sweep_done">Sweep complete</string>
     <string name="obd_sweep_hint">Scanning CAN headers and UDS identifiers for a response. This takes about a minute.</string>
+    <string name="obd_sweep_progress">%1$d / %2$d probes</string>
+    <string name="obd_sweep_close">Close</string>
     <string name="battery_optimization_hint">Recording may stop when the screen locks. Tap to allow unrestricted battery usage.</string>
     <string name="auto_start_on_obd_connect">Auto-start tracking when OBD connects</string>
     <string name="ride_grace_period">Continue ride if reconnected within %1$d min</string>
@@ -96,6 +99,7 @@
     <string name="bike_info_battery">BATTERY</string>
     <string name="bike_info_high_tag">HIGH</string>
     <string name="bike_info_no_dtc">No stored trouble codes.</string>
+    <string name="bike_info_dtc_unknown">Connect OBD to check for trouble codes.</string>
     <string name="bike_info_check_engine_count">CHECK ENGINE · %1$d code(s)</string>
     <string name="bike_info_sweep_title">Look for more signals</string>
     <string name="bike_info_sweep_hint">Battery voltage, intake temp, ABS faults — not mapped yet</string>

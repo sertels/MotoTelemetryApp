@@ -345,6 +345,8 @@ class MainActivity : AppCompatActivity() {
                                     val obdConnected by dashboardViewModel.obdConnected.collectAsState()
                                     val obdSweepRunning by dashboardViewModel.obdSweepRunning.collectAsState()
                                     val obdSweepResults by dashboardViewModel.obdSweepResults.collectAsState()
+                                    val obdSweepProgress by dashboardViewModel.obdSweepProgress.collectAsState()
+                                    val obdConnectError by dashboardViewModel.obdConnectError.collectAsState()
                                     val obdMilOn by dashboardViewModel.obdMilOn.collectAsState()
                                     val obdDtcCodes by dashboardViewModel.obdDtcCodes.collectAsState()
 
@@ -355,10 +357,13 @@ class MainActivity : AppCompatActivity() {
                                         onCalibrate = { dashboardViewModel.calibrateLeanAngle() },
                                         obdConnected = obdConnected,
                                         onFetchObdDevices = { dashboardViewModel.getPairedObdDevices() },
-                                        onConnectObd = { address -> dashboardViewModel.connectObd(address) },
+                                        onConnectObd = { address -> dashboardViewModel.connectObd(context, address) },
                                         obdSweepRunning = obdSweepRunning,
                                         obdSweepResults = obdSweepResults,
+                                        obdSweepProgress = obdSweepProgress,
                                         onRunObdSweep = { dashboardViewModel.runObdSweep() },
+                                        onCancelObdSweep = { dashboardViewModel.cancelObdSweep() },
+                                        obdConnectError = obdConnectError,
                                         obdMilOn = obdMilOn,
                                         obdDtcCodes = obdDtcCodes,
                                         onClearObdDtcs = { dashboardViewModel.clearObdDtcs() }
@@ -430,6 +435,7 @@ class MainActivity : AppCompatActivity() {
                                 val obdRawData by dashboardViewModel.obdRawData.collectAsState()
                                 val obdSweepRunning by dashboardViewModel.obdSweepRunning.collectAsState()
                                 val obdSweepResults by dashboardViewModel.obdSweepResults.collectAsState()
+                                val obdSweepProgress by dashboardViewModel.obdSweepProgress.collectAsState()
 
                                 BikeInfoScreen(
                                     data = currentData,
@@ -440,7 +446,9 @@ class MainActivity : AppCompatActivity() {
                                     onClearObdDtcs = { dashboardViewModel.clearObdDtcs() },
                                     obdSweepRunning = obdSweepRunning,
                                     obdSweepResults = obdSweepResults,
-                                    onRunObdSweep = { dashboardViewModel.runObdSweep() }
+                                    obdSweepProgress = obdSweepProgress,
+                                    onRunObdSweep = { dashboardViewModel.runObdSweep() },
+                                    onCancelObdSweep = { dashboardViewModel.cancelObdSweep() }
                                 )
                             }
                             composable("analysis") {

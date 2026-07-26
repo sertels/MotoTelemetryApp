@@ -60,7 +60,10 @@ fun DashboardScreen(
     onConnectObd: (String) -> Unit = {},
     obdSweepRunning: Boolean = false,
     obdSweepResults: List<ObdSweepEntry> = emptyList(),
+    obdSweepProgress: Pair<Int, Int> = 0 to 0,
     onRunObdSweep: () -> Unit = {},
+    onCancelObdSweep: () -> Unit = {},
+    obdConnectError: String? = null,
     obdMilOn: Boolean = false,
     obdDtcCodes: List<String> = emptyList(),
     onClearObdDtcs: () -> Unit = {}
@@ -88,11 +91,17 @@ fun DashboardScreen(
                     onConnect = onConnectObd,
                     sweepRunning = obdSweepRunning,
                     sweepResults = obdSweepResults,
-                    onRunSweep = onRunObdSweep
+                    sweepProgress = obdSweepProgress,
+                    onRunSweep = onRunObdSweep,
+                    onCancelSweep = onCancelObdSweep
                 )
                 if (obdMilOn) {
                     Spacer(modifier = Modifier.height(6.dp))
                     CheckEngineBadge(dtcCodes = obdDtcCodes, onClearDtcs = onClearObdDtcs)
+                }
+                if (obdConnectError != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    ObdConnectErrorPill(obdConnectError)
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 SpeedRpmCard(data, isLandscape = true)
@@ -145,9 +154,15 @@ fun DashboardScreen(
                         onConnect = onConnectObd,
                         sweepRunning = obdSweepRunning,
                         sweepResults = obdSweepResults,
-                        onRunSweep = onRunObdSweep
+                        sweepProgress = obdSweepProgress,
+                        onRunSweep = onRunObdSweep,
+                        onCancelSweep = onCancelObdSweep
                     )
                 }
+            }
+            if (obdConnectError != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                ObdConnectErrorPill(obdConnectError)
             }
             Spacer(modifier = Modifier.height(10.dp))
             SpeedGearRpmCard(data)
@@ -164,6 +179,19 @@ fun DashboardScreen(
             Spacer(modifier = Modifier.height(16.dp))
             BarsCard(data, modifier = Modifier.fillMaxWidth())
         }
+    }
+}
+
+@Composable
+fun ObdConnectErrorPill(message: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .background(Color(0xFF2A1414), RoundedCornerShape(100.dp))
+            .border(1.dp, Color(0xFF5A2020), RoundedCornerShape(100.dp))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = message, color = Color(0xFFFF8A80), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -191,7 +219,9 @@ fun ObdStatusBadge(
     onConnect: (String) -> Unit,
     sweepRunning: Boolean = false,
     sweepResults: List<ObdSweepEntry> = emptyList(),
+    sweepProgress: Pair<Int, Int> = 0 to 0,
     onRunSweep: () -> Unit = {},
+    onCancelSweep: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -260,18 +290,26 @@ fun ObdStatusBadge(
         ObdSweepDialog(
             running = sweepRunning,
             results = sweepResults,
+            progress = sweepProgress,
+            onCancel = onCancelSweep,
             onDismiss = { showSweepDialog = false }
         )
     }
 }
 
 @Composable
-fun ObdSweepDialog(running: Boolean, results: List<ObdSweepEntry>, onDismiss: () -> Unit) {
+fun ObdSweepDialog(
+    running: Boolean,
+    results: List<ObdSweepEntry>,
+    progress: Pair<Int, Int> = 0 to 0,
+    onCancel: () -> Unit = {},
+    onDismiss: () -> Unit
+) {
     androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (running) onCancel() else onDismiss() },
         confirmButton = {
-            androidx.compose.material3.TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
+            androidx.compose.material3.TextButton(onClick = { if (running) onCancel() else onDismiss() }) {
+                Text(if (running) stringResource(R.string.cancel) else stringResource(R.string.obd_sweep_close))
             }
         },
         title = {
@@ -282,6 +320,18 @@ fun ObdSweepDialog(running: Boolean, results: List<ObdSweepEntry>, onDismiss: ()
         },
         text = {
             Column(modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                if (running) {
+                    val (completed, total) = progress
+                    if (total > 0) {
+                        Text(
+                            stringResource(R.string.obd_sweep_progress, completed, total),
+                            color = TelemetryAccent,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                    }
+                }
                 if (running && results.isEmpty()) {
                     Text(
                         stringResource(R.string.obd_sweep_hint),

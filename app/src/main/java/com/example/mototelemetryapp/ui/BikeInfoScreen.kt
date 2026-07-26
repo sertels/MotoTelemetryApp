@@ -49,7 +49,9 @@ fun BikeInfoScreen(
     onClearObdDtcs: () -> Unit,
     obdSweepRunning: Boolean,
     obdSweepResults: List<ObdSweepEntry>,
-    onRunObdSweep: () -> Unit
+    obdSweepProgress: Pair<Int, Int> = 0 to 0,
+    onRunObdSweep: () -> Unit,
+    onCancelObdSweep: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -165,7 +167,7 @@ fun BikeInfoScreen(
         }
 
         SectionLabel(stringResource(R.string.bike_info_diagnostics))
-        DiagnosticsCard(obdMilOn = obdMilOn, dtcCodes = obdDtcCodes, onClearDtcs = onClearObdDtcs)
+        DiagnosticsCard(obdConnected = obdConnected, obdMilOn = obdMilOn, dtcCodes = obdDtcCodes, onClearDtcs = onClearObdDtcs)
 
         SectionLabel(stringResource(R.string.bike_info_sensor_map))
         PidMapTable()
@@ -173,7 +175,9 @@ fun BikeInfoScreen(
         SweepCta(
             running = obdSweepRunning,
             results = obdSweepResults,
-            onRunSweep = onRunObdSweep
+            progress = obdSweepProgress,
+            onRunSweep = onRunObdSweep,
+            onCancelSweep = onCancelObdSweep
         )
     }
 }
@@ -226,10 +230,23 @@ private fun StatCard(label: String, value: String, unit: String, hot: Boolean = 
 }
 
 @Composable
-private fun DiagnosticsCard(obdMilOn: Boolean, dtcCodes: List<String>, onClearDtcs: () -> Unit) {
+private fun DiagnosticsCard(obdConnected: Boolean, obdMilOn: Boolean, dtcCodes: List<String>, onClearDtcs: () -> Unit) {
     var showClearConfirm by remember { mutableStateOf(false) }
 
-    if (obdMilOn) {
+    if (!obdConnected) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(CardBg, RoundedCornerShape(16.dp))
+                .border(1.dp, CardBorderSoft, RoundedCornerShape(16.dp))
+                .padding(horizontal = 15.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF5A5A5A)))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(stringResource(R.string.bike_info_dtc_unknown), color = TelemetryOnSurfaceMuted, fontSize = 12.sp)
+        }
+    } else if (obdMilOn) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -329,7 +346,13 @@ private fun PidMapTable() {
 }
 
 @Composable
-private fun SweepCta(running: Boolean, results: List<ObdSweepEntry>, onRunSweep: () -> Unit) {
+private fun SweepCta(
+    running: Boolean,
+    results: List<ObdSweepEntry>,
+    progress: Pair<Int, Int> = 0 to 0,
+    onRunSweep: () -> Unit,
+    onCancelSweep: () -> Unit = {}
+) {
     var showSweepDialog by remember { mutableStateOf(false) }
 
     Row(
@@ -366,6 +389,8 @@ private fun SweepCta(running: Boolean, results: List<ObdSweepEntry>, onRunSweep:
         ObdSweepDialog(
             running = running,
             results = results,
+            progress = progress,
+            onCancel = onCancelSweep,
             onDismiss = { showSweepDialog = false }
         )
     }
