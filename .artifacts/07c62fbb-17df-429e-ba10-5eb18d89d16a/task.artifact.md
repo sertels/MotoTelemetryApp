@@ -1,8 +1,0 @@
-- [ ] Add Vico charting dependencies to `build.gradle.kts`
-- [ ] Create `Session.kt` entity and update `TelemetryRecord.kt`
-- [ ] Update `TelemetryDao.kt` and `AppDatabase.kt` (v6)
-- [ ] Implement fuel data querying (015E, 012F) in `BluetoothOBDManager.kt`
-- [ ] Update `TelemetryService.kt` to manage ride sessions
-- [ ] Create `AnalysisScreen.kt` with Vico charts
-- [ ] Add "Analysis" tab to `MainActivity.kt` navigation
-- [ ] Verify session grouping and chart rendering
