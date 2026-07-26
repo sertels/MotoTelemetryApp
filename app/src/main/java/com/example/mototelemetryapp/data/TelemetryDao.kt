@@ -30,9 +30,15 @@ interface TelemetryDao {
     @Query("SELECT * FROM sessions WHERE endTime IS NULL")
     suspend fun getOpenSessions(): List<Session>
 
+    @Query("SELECT startTime FROM sessions")
+    suspend fun getAllSessionStartTimes(): List<Long>
+
     // Telemetry
     @Insert
     suspend fun insertRecord(record: TelemetryRecord)
+
+    @Insert
+    suspend fun insertRecords(records: List<TelemetryRecord>)
 
     @Query("SELECT * FROM telemetry_records WHERE sessionId = :sessionId ORDER BY timestamp ASC")
     fun getRecordsForSession(sessionId: Long): Flow<List<TelemetryRecord>>

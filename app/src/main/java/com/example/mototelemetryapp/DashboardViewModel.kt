@@ -1,6 +1,5 @@
 package com.example.mototelemetryapp
 
-import android.accounts.Account
 import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
@@ -10,8 +9,10 @@ import android.os.IBinder
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mototelemetryapp.data.AppDatabase
+import com.example.mototelemetryapp.data.RestoreMode
 import com.example.mototelemetryapp.data.Session
 import com.example.mototelemetryapp.data.TelemetryRecord
+import com.example.mototelemetryapp.data.restoreFromBackupFile
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -74,14 +75,60 @@ class DashboardViewModel : ViewModel() {
         }
     }
 
-    fun backupToCloud(context: Context, account: Account) {
+    fun backupToCloud(context: Context, accessToken: String) {
         viewModelScope.launch {
             _backupStatus.value = context.getString(R.string.backup_started)
             val manager = GoogleDriveManager(context)
-            val success = manager.uploadDatabase(account)
+            val success = manager.uploadDatabase(accessToken)
             _backupStatus.value = if (success) context.getString(R.string.backup_success) else context.getString(R.string.backup_error)
             delay(2600)
             _backupStatus.value = null
+        }
+    }
+
+    // Null means "not loaded" - either still loading, or the fetch/sign-in failed - which is
+    // distinct from a successful fetch that just found zero backups (empty list).
+    private val _driveBackups = MutableStateFlow<List<DriveBackupEntry>?>(null)
+    val driveBackups = _driveBackups.asStateFlow()
+
+    private val _driveBackupsLoading = MutableStateFlow(false)
+    val driveBackupsLoading = _driveBackupsLoading.asStateFlow()
+
+    private val _restoreStatus = MutableStateFlow<String?>(null)
+    val restoreStatus = _restoreStatus.asStateFlow()
+
+    // Called the moment the restore dialog opens, before the (async) sign-in even starts, so
+    // the dialog shows a loading state immediately rather than briefly flashing "no backups".
+    fun setDriveBackupsLoading() {
+        _driveBackupsLoading.value = true
+        _driveBackups.value = null
+    }
+
+    fun fetchDriveBackups(context: Context, accessToken: String) {
+        viewModelScope.launch {
+            _driveBackupsLoading.value = true
+            _driveBackups.value = GoogleDriveManager(context).listBackups(accessToken)
+            _driveBackupsLoading.value = false
+        }
+    }
+
+    fun clearDriveBackups() {
+        _driveBackups.value = null
+        _driveBackupsLoading.value = false
+    }
+
+    fun restoreFromDrive(context: Context, accessToken: String, fileId: String, mode: RestoreMode) {
+        viewModelScope.launch {
+            _restoreStatus.value = context.getString(R.string.restore_started)
+            val backupFile = GoogleDriveManager(context).downloadBackup(accessToken, fileId)
+            val success = backupFile != null && restoreFromBackupFile(context, backupFile, mode)
+            _restoreStatus.value = if (success) context.getString(R.string.restore_success) else context.getString(R.string.restore_error)
+            if (success) {
+                fetchHistory(context)
+                fetchDashboardSummary(context)
+            }
+            delay(2600)
+            _restoreStatus.value = null
         }
     }
 

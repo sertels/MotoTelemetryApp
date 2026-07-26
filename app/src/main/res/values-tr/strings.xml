@@ -64,4 +64,24 @@
     <string name="obd_clear_dtcs">Kodları Temizle</string>
     <string name="obd_clear_dtcs_title">Arıza Kodları Temizlensin mi?</string>
     <string name="obd_clear_dtcs_message">Bu işlem kayıtlı arıza kodlarını siler, arıza lambasını kapatır ve ECU\'nun hazırlık izleyicilerini sıfırlar. Altta yatan arıza hâlâ mevcutsa bir sonraki sürüş döngüsünde tekrar oluşabilir.</string>
+    <string name="settings">Ayarlar</string>
+    <string name="settings_section_tracking">KAYIT</string>
+    <string name="settings_section_battery">PİL</string>
+    <string name="settings_section_language">DİL</string>
+    <string name="battery_optimization_exempt">Kısıtlamasız pil kullanımına zaten izin verildi.</string>
+    <string name="restore_drive">Geri Yükle</string>
+    <string name="restore_started">Geri yükleniyor…</string>
+    <string name="restore_success">Geri yükleme başarılı!</string>
+    <string name="restore_error">Geri yükleme hatası!</string>
+    <string name="restore_dialog_title">Drive\'dan Geri Yükle</string>
+    <string name="restore_no_backups">Drive\'da yedek bulunamadı.</string>
+    <string name="restore_loading">Yedekler yükleniyor…</string>
+    <string name="restore_list_error">Yedekler yüklenemedi. Girişinizi kontrol edip tekrar deneyin.</string>
+    <string name="drive_signin_error">Google girişi başarısız</string>
+    <string name="restore_pick_backup">BİR YEDEK SEÇİN</string>
+    <string name="restore_pick_mode">NASIL GERİ YÜKLENSİN</string>
+    <string name="restore_mode_merge">Birleştir</string>
+    <string name="restore_mode_merge_hint">Bu telefonda henüz olmayan sürüşleri yedekten ekler. Mevcut verilerin tümü korunur.</string>
+    <string name="restore_mode_replace">Değiştir</string>
+    <string name="restore_mode_replace_hint">Yerel verileri siler ve yedekle değiştirir. Bu yedek alındıktan sonra kaydedilen sürüşler kaybolur.</string>
 </resources>

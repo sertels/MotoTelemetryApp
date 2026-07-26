@@ -64,4 +64,24 @@
     <string name="obd_clear_dtcs">Clear Codes</string>
     <string name="obd_clear_dtcs_title">Clear Diagnostic Codes?</string>
     <string name="obd_clear_dtcs_message">This erases stored trouble codes, turns off the check-engine light, and resets the ECU\'s readiness monitors. If the underlying fault is still present, it may come back within the next drive cycle.</string>
+    <string name="settings">Settings</string>
+    <string name="settings_section_tracking">TRACKING</string>
+    <string name="settings_section_battery">BATTERY</string>
+    <string name="settings_section_language">LANGUAGE</string>
+    <string name="battery_optimization_exempt">Unrestricted battery usage is already allowed.</string>
+    <string name="restore_drive">Restore</string>
+    <string name="restore_started">Restoring…</string>
+    <string name="restore_success">Restore successful!</string>
+    <string name="restore_error">Restore error!</string>
+    <string name="restore_dialog_title">Restore from Drive</string>
+    <string name="restore_no_backups">No backups found in Drive.</string>
+    <string name="restore_loading">Loading backups…</string>
+    <string name="restore_list_error">Couldn\'t load backups. Check your sign-in and try again.</string>
+    <string name="drive_signin_error">Google sign-in failed</string>
+    <string name="restore_pick_backup">CHOOSE A BACKUP</string>
+    <string name="restore_pick_mode">HOW TO RESTORE</string>
+    <string name="restore_mode_merge">Merge</string>
+    <string name="restore_mode_merge_hint">Add rides from the backup that aren\'t already on this phone. Keeps everything currently here.</string>
+    <string name="restore_mode_replace">Replace</string>
+    <string name="restore_mode_replace_hint">Wipe local data and replace it with the backup. Rides recorded since that backup was made will be lost.</string>
 </resources>

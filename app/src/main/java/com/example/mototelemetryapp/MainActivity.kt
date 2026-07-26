@@ -30,12 +30,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.QueryStats
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -62,10 +61,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.mototelemetryapp.data.RestoreMode
 import com.example.mototelemetryapp.data.Session
 import com.example.mototelemetryapp.ui.AnalysisScreen
 import com.example.mototelemetryapp.ui.DashboardScreen
 import com.example.mototelemetryapp.ui.HistoryScreen
+import com.example.mototelemetryapp.ui.SettingsScreen
 import com.example.mototelemetryapp.ui.theme.MotoTelemetryAppTheme
 import com.example.mototelemetryapp.ui.theme.TelemetryAccent
 import com.example.mototelemetryapp.ui.theme.TelemetryOnAccent
@@ -96,9 +97,31 @@ class MainActivity : AppCompatActivity() {
             val context = LocalContext.current
             val navController = rememberNavController()
             val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-            val backupErrorMessage = stringResource(R.string.backup_error)
+            val driveSignInErrorMessage = stringResource(R.string.drive_signin_error)
             var isRotationLocked by remember { mutableStateOf(false) }
-            
+
+            // Retained between fetching the Drive backup list and confirming a restore, since
+            // that's two separate user actions (open dialog, then pick + confirm) sharing one token.
+            var driveAccessToken by remember { mutableStateOf<String?>(null) }
+
+            val appPrefs = remember { context.getSharedPreferences(APP_PREFS_NAME, Context.MODE_PRIVATE) }
+            var batteryOptExempt by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
+            val batteryOptLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.StartActivityForResult()
+            ) {
+                batteryOptExempt = isIgnoringBatteryOptimizations(context)
+            }
+
+            // Foreground services can still be killed by OEM battery managers (this is exactly
+            // what happened to a recorded ride once) unless the app is exempted from battery
+            // optimization. Ask once automatically; the Settings tab stays as a manual retry.
+            LaunchedEffect(Unit) {
+                if (!batteryOptExempt && !appPrefs.getBoolean(KEY_BATTERY_OPT_PROMPTED, false)) {
+                    appPrefs.edit().putBoolean(KEY_BATTERY_OPT_PROMPTED, true).apply()
+                    batteryOptLauncher.launch(requestIgnoreBatteryOptimizationsIntent(context))
+                }
+            }
+
             // Service binding management - only bind when activity is created, not on recomposition
             LaunchedEffect(Unit) {
                 // Only attach if a session is already running; don't spin up an inert,
@@ -116,18 +139,106 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+            // Holds whichever callback is waiting on a token while the consent screen (launched
+            // below) is on screen - the launcher's result callback has no other way to know
+            // which of backup/restore triggered it.
+            var pendingAccessTokenCallback by remember { mutableStateOf<((String) -> Unit)?>(null) }
+            var pendingAccessTokenFailureCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
+
             val authorizationLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.StartIntentSenderForResult()
             ) { result ->
+                var handled = false
                 if (result.resultCode == RESULT_OK) {
                     try {
-                        Identity.getAuthorizationClient(this)
+                        val authResult = Identity.getAuthorizationClient(this)
                             .getAuthorizationResultFromIntent(result.data)
-                        
-                        // Permission granted, start backup
-                        dashboardViewModel.backupToCloud(context, android.accounts.Account("authorized", "com.google"))
+                        val token = authResult.accessToken
+                        if (token != null) {
+                            pendingAccessTokenCallback?.invoke(token)
+                            handled = true
+                        }
                     } catch (e: ApiException) {
                         Log.e("MainActivity", "Authorization failed: ${e.message}")
+                    }
+                }
+                if (!handled) {
+                    pendingAccessTokenFailureCallback?.invoke()
+                }
+                pendingAccessTokenCallback = null
+                pendingAccessTokenFailureCallback = null
+            }
+
+            // Shared by backup and restore: signs in via Credential Manager, then requests a
+            // Drive appDataFolder access token via the Authorization API, handing it to
+            // whichever action asked for it. The token (not an Account) is what the Drive client
+            // is built from - see GoogleDriveManager - since GoogleAccountCredential's classic
+            // AccountManager-based auth is a separate system this sign-in flow never grants.
+            fun requestDriveAccessToken(onToken: (String) -> Unit, onFailure: () -> Unit = {}) {
+                lifecycleScope.launch {
+                    try {
+                        val googleIdOption = GetGoogleIdOption.Builder()
+                            .setFilterByAuthorizedAccounts(false)
+                            .setServerClientId("215653511600-csa6ge8s64b5dacl7to64hhscfr0p85s.apps.googleusercontent.com")
+                            .build()
+
+                        val request = GetCredentialRequest.Builder()
+                            .addCredentialOption(googleIdOption)
+                            .build()
+
+                        val result = credentialManager.getCredential(context, request)
+                        val credential = result.credential
+
+                        val googleIdTokenCredential = if (
+                            credential is CustomCredential &&
+                            credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                        ) {
+                            GoogleIdTokenCredential.createFrom(credential.data)
+                        } else {
+                            null
+                        }
+
+                        if (googleIdTokenCredential == null) {
+                            Log.e("MainActivity", "Credential was not a Google ID token")
+                            return@launch
+                        }
+
+                        val authRequest = AuthorizationRequest.builder()
+                            .setRequestedScopes(listOf(Scope(DriveScopes.DRIVE_APPDATA)))
+                            .build()
+
+                        Identity.getAuthorizationClient(this@MainActivity)
+                            .authorize(authRequest)
+                            .addOnSuccessListener { authResult ->
+                                if (authResult.hasResolution()) {
+                                    authResult.pendingIntent?.let { pendingIntent ->
+                                        pendingAccessTokenCallback = onToken
+                                        pendingAccessTokenFailureCallback = onFailure
+                                        val intentSenderRequest = IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                                        authorizationLauncher.launch(intentSenderRequest)
+                                    } ?: run {
+                                        Log.e("MainActivity", "PendingIntent is null")
+                                        onFailure()
+                                    }
+                                } else {
+                                    val token = authResult.accessToken
+                                    if (token != null) onToken(token) else onFailure()
+                                }
+                            }
+                            .addOnFailureListener { e ->
+                                Log.e("MainActivity", "Drive authorization request failed", e)
+                                onFailure()
+                            }
+                    } catch (e: NoCredentialException) {
+                        Log.e("MainActivity", "No Google account available for sign-in", e)
+                        Toast.makeText(context, driveSignInErrorMessage, Toast.LENGTH_SHORT).show()
+                        onFailure()
+                    } catch (e: GetCredentialException) {
+                        Log.e("MainActivity", "Credential retrieval failed", e)
+                        onFailure()
+                    } catch (e: Exception) {
+                        Log.e("MainActivity", "Drive auth flow failed", e)
+                        onFailure()
                     }
                 }
             }
@@ -198,6 +309,13 @@ class MainActivity : AppCompatActivity() {
                                 onClick = { navController.navigate("analysis") },
                                 colors = navItemColors
                             )
+                            NavigationBarItem(
+                                icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                                label = { Text(stringResource(R.string.settings)) },
+                                selected = currentRoute == "settings",
+                                onClick = { navController.navigate("settings") },
+                                colors = navItemColors
+                            )
                         }
                     }
                 ) { innerPadding ->
@@ -236,12 +354,18 @@ class MainActivity : AppCompatActivity() {
                                     val fuelLevelPct by dashboardViewModel.fuelLevelPct.collectAsState()
                                     val serviceRemainingKm by dashboardViewModel.serviceRemainingKm.collectAsState()
                                     val backupStatus by dashboardViewModel.backupStatus.collectAsState()
+                                    val restoreStatus by dashboardViewModel.restoreStatus.collectAsState()
+                                    val driveBackups by dashboardViewModel.driveBackups.collectAsState()
+                                    val driveBackupsLoading by dashboardViewModel.driveBackupsLoading.collectAsState()
                                     MainScreen(
                                         isTrackingActive = isTrackingActive,
                                         lastRide = sessions.firstOrNull(),
                                         fuelLevelPct = fuelLevelPct,
                                         serviceRemainingKm = serviceRemainingKm,
                                         backupStatus = backupStatus,
+                                        restoreStatus = restoreStatus,
+                                        driveBackups = driveBackups,
+                                        driveBackupsLoading = driveBackupsLoading,
                                         onStartService = {
                                             startTelemetryService()
                                             dashboardViewModel.setTrackingActive(true)
@@ -254,71 +378,27 @@ class MainActivity : AppCompatActivity() {
                                         onGoToPanel = { dashboardViewModel.bindService(context) },
                                         onNavigateHistory = { navController.navigate("history") },
                                         onNavigateAnalysis = { navController.navigate("analysis") },
+                                        onNavigateSettings = { navController.navigate("settings") },
                                         onBackup = {
-                                            lifecycleScope.launch {
-                                                try {
-                                                    // 1. Sign-in
-                                                    val googleIdOption = GetGoogleIdOption.Builder()
-                                                        .setFilterByAuthorizedAccounts(false)
-                                                        .setServerClientId("215653511600-csa6ge8s64b5dacl7to64hhscfr0p85s.apps.googleusercontent.com")
-                                                        .build()
-
-                                                    val request = GetCredentialRequest.Builder()
-                                                        .addCredentialOption(googleIdOption)
-                                                        .build()
-
-                                                    val result = credentialManager.getCredential(context, request)
-                                                    val credential = result.credential
-
-                                                    val googleIdTokenCredential = if (
-                                                        credential is CustomCredential &&
-                                                        credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-                                                    ) {
-                                                        GoogleIdTokenCredential.createFrom(credential.data)
-                                                    } else {
-                                                        null
-                                                    }
-
-                                                    if (googleIdTokenCredential != null) {
-                                                        val email = googleIdTokenCredential.id
-                                                        val account = android.accounts.Account(email, "com.google")
-
-                                                        // 2. Request Drive Authorization
-                                                        val authRequest = AuthorizationRequest.builder()
-                                                            .setRequestedScopes(listOf(Scope(DriveScopes.DRIVE_APPDATA)))
-                                                            .build()
-
-                                                        Identity.getAuthorizationClient(this@MainActivity)
-                                                            .authorize(authRequest)
-                                                            .addOnSuccessListener { authResult ->
-                                                                if (authResult.hasResolution()) {
-                                                                    authResult.pendingIntent?.let { pendingIntent ->
-                                                                        val intentSenderRequest = IntentSenderRequest.Builder(pendingIntent.intentSender).build()
-                                                                        authorizationLauncher.launch(intentSenderRequest)
-                                                                    } ?: run {
-                                                                        Log.e("MainActivity", "PendingIntent is null")
-                                                                        dashboardViewModel.backupToCloud(context, account)
-                                                                    }
-                                                                } else {
-                                                                    dashboardViewModel.backupToCloud(context, account)
-                                                                }
-                                                            }
-                                                    } else {
-                                                        Log.e("MainActivity", "Credential was not a Google ID token")
-                                                    }
-                                                } catch (e: NoCredentialException) {
-                                                    Log.e("MainActivity", "No Google account available for sign-in", e)
-                                                    Toast.makeText(context, backupErrorMessage, Toast.LENGTH_SHORT).show()
-                                                } catch (e: GetCredentialException) {
-                                                    Log.e("MainActivity", "Credential retrieval failed", e)
-                                                } catch (e: Exception) {
-                                                    Log.e("MainActivity", "Backup flow failed", e)
-                                                }
-                                            }
+                                            requestDriveAccessToken(onToken = { token ->
+                                                dashboardViewModel.backupToCloud(context, token)
+                                            })
                                         },
-                                        onLanguageChange = { tag ->
-                                            val appLocale: LocaleListCompat = LocaleListCompat.forLanguageTags(tag)
-                                            AppCompatDelegate.setApplicationLocales(appLocale)
+                                        onOpenRestore = {
+                                            dashboardViewModel.setDriveBackupsLoading()
+                                            requestDriveAccessToken(
+                                                onToken = { token ->
+                                                    driveAccessToken = token
+                                                    dashboardViewModel.fetchDriveBackups(context, token)
+                                                },
+                                                onFailure = { dashboardViewModel.clearDriveBackups() }
+                                            )
+                                        },
+                                        onDismissRestore = { dashboardViewModel.clearDriveBackups() },
+                                        onConfirmRestore = { fileId, mode ->
+                                            driveAccessToken?.let { token ->
+                                                dashboardViewModel.restoreFromDrive(context, token, fileId, mode)
+                                            }
                                         }
                                     )
                                 }
@@ -339,6 +419,37 @@ class MainActivity : AppCompatActivity() {
                                     },
                                     getRecords = { sessionId ->
                                         dashboardViewModel.getRecordsForSession(context, sessionId)
+                                    }
+                                )
+                            }
+                            composable("settings") {
+                                var autoStartOnObdConnect by remember {
+                                    mutableStateOf(appPrefs.getBoolean(KEY_AUTO_START_ON_OBD_CONNECT, false))
+                                }
+                                var rideGracePeriodMinutes by remember {
+                                    mutableStateOf(appPrefs.getInt(KEY_RIDE_GRACE_PERIOD_MINUTES, DEFAULT_RIDE_GRACE_PERIOD_MINUTES))
+                                }
+                                val currentLocaleTag = AppCompatDelegate.getApplicationLocales()[0]?.language ?: "en"
+
+                                SettingsScreen(
+                                    autoStartOnObdConnect = autoStartOnObdConnect,
+                                    onAutoStartToggleChange = { checked ->
+                                        autoStartOnObdConnect = checked
+                                        appPrefs.edit().putBoolean(KEY_AUTO_START_ON_OBD_CONNECT, checked).apply()
+                                    },
+                                    rideGracePeriodMinutes = rideGracePeriodMinutes,
+                                    onRideGracePeriodChange = { minutes ->
+                                        rideGracePeriodMinutes = minutes
+                                        appPrefs.edit().putInt(KEY_RIDE_GRACE_PERIOD_MINUTES, minutes).apply()
+                                    },
+                                    batteryOptExempt = batteryOptExempt,
+                                    onRequestBatteryOptExemption = {
+                                        batteryOptLauncher.launch(requestIgnoreBatteryOptimizationsIntent(context))
+                                    },
+                                    currentLocaleTag = currentLocaleTag,
+                                    onLanguageChange = { tag ->
+                                        val appLocale: LocaleListCompat = LocaleListCompat.forLanguageTags(tag)
+                                        AppCompatDelegate.setApplicationLocales(appLocale)
                                     }
                                 )
                             }
@@ -370,13 +481,19 @@ fun MainScreen(
     fuelLevelPct: Int?,
     serviceRemainingKm: Int?,
     backupStatus: String?,
+    restoreStatus: String?,
+    driveBackups: List<DriveBackupEntry>?,
+    driveBackupsLoading: Boolean,
     onStartService: () -> Unit,
     onStopService: () -> Unit,
     onGoToPanel: () -> Unit,
     onNavigateHistory: () -> Unit,
     onNavigateAnalysis: () -> Unit,
+    onNavigateSettings: () -> Unit,
     onBackup: () -> Unit,
-    onLanguageChange: (String) -> Unit
+    onOpenRestore: () -> Unit,
+    onDismissRestore: () -> Unit,
+    onConfirmRestore: (fileId: String, mode: RestoreMode) -> Unit
 ) {
     val permissions = mutableListOf(
         Manifest.permission.ACCESS_FINE_LOCATION,
@@ -399,32 +516,6 @@ fun MainScreen(
 
     LaunchedEffect(Unit) {
         launcher.launch(permissions.toTypedArray())
-    }
-
-    val context = LocalContext.current
-    val batteryOptPrefs = remember { context.getSharedPreferences(APP_PREFS_NAME, Context.MODE_PRIVATE) }
-    var batteryOptExempt by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
-    var autoStartOnObdConnect by remember {
-        mutableStateOf(batteryOptPrefs.getBoolean(KEY_AUTO_START_ON_OBD_CONNECT, false))
-    }
-    var rideGracePeriodMinutes by remember {
-        mutableStateOf(batteryOptPrefs.getInt(KEY_RIDE_GRACE_PERIOD_MINUTES, DEFAULT_RIDE_GRACE_PERIOD_MINUTES))
-    }
-
-    val batteryOptLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        batteryOptExempt = isIgnoringBatteryOptimizations(context)
-    }
-
-    // Foreground services can still be killed by OEM battery managers (this is exactly
-    // what happened to a recorded ride once) unless the app is exempted from battery
-    // optimization. Ask once automatically; the warning row below stays as a manual retry.
-    LaunchedEffect(Unit) {
-        if (!batteryOptExempt && !batteryOptPrefs.getBoolean(KEY_BATTERY_OPT_PROMPTED, false)) {
-            batteryOptPrefs.edit().putBoolean(KEY_BATTERY_OPT_PROMPTED, true).apply()
-            batteryOptLauncher.launch(requestIgnoreBatteryOptimizationsIntent(context))
-        }
     }
 
     Column(
@@ -558,102 +649,15 @@ fun MainScreen(
                 onClick = onNavigateAnalysis,
                 modifier = Modifier.weight(1f)
             )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color(0xFF161616), RoundedCornerShape(10.dp))
-                .border(1.dp, Color(0xFF232323), RoundedCornerShape(10.dp))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = stringResource(R.string.auto_start_on_obd_connect),
-                color = TelemetryOnSurface,
-                fontSize = 12.sp,
-                modifier = Modifier.weight(1f).padding(end = 8.dp)
-            )
-            Switch(
-                checked = autoStartOnObdConnect,
-                onCheckedChange = { checked ->
-                    autoStartOnObdConnect = checked
-                    batteryOptPrefs.edit().putBoolean(KEY_AUTO_START_ON_OBD_CONNECT, checked).apply()
-                },
-                colors = SwitchDefaults.colors(checkedTrackColor = TelemetryAccent)
+            QuickAccessButton(
+                icon = Icons.Default.Settings,
+                label = stringResource(R.string.settings),
+                onClick = onNavigateSettings,
+                modifier = Modifier.weight(1f)
             )
         }
 
-        if (autoStartOnObdConnect) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF161616), RoundedCornerShape(10.dp))
-                    .border(1.dp, Color(0xFF232323), RoundedCornerShape(10.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = stringResource(R.string.ride_grace_period, rideGracePeriodMinutes),
-                    color = TelemetryOnSurface,
-                    fontSize = 12.sp,
-                    modifier = Modifier.weight(1f).padding(end = 8.dp)
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = {
-                            val newValue = (rideGracePeriodMinutes - 1).coerceAtLeast(MIN_RIDE_GRACE_PERIOD_MINUTES)
-                            rideGracePeriodMinutes = newValue
-                            batteryOptPrefs.edit().putInt(KEY_RIDE_GRACE_PERIOD_MINUTES, newValue).apply()
-                        },
-                        enabled = rideGracePeriodMinutes > MIN_RIDE_GRACE_PERIOD_MINUTES
-                    ) {
-                        Text(text = "−", color = TelemetryAccent, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Text(
-                        text = "$rideGracePeriodMinutes",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.widthIn(min = 24.dp),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                    IconButton(
-                        onClick = {
-                            val newValue = (rideGracePeriodMinutes + 1).coerceAtMost(MAX_RIDE_GRACE_PERIOD_MINUTES)
-                            rideGracePeriodMinutes = newValue
-                            batteryOptPrefs.edit().putInt(KEY_RIDE_GRACE_PERIOD_MINUTES, newValue).apply()
-                        },
-                        enabled = rideGracePeriodMinutes < MAX_RIDE_GRACE_PERIOD_MINUTES
-                    ) {
-                        Text(text = "+", color = TelemetryAccent, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
         Spacer(modifier = Modifier.height(16.dp))
-
-        if (!batteryOptExempt) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF241C0A), RoundedCornerShape(10.dp))
-                    .clickable { batteryOptLauncher.launch(requestIgnoreBatteryOptimizationsIntent(context)) }
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(imageVector = Icons.Default.Warning, contentDescription = null, tint = Color(0xFFFFC107), modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = stringResource(R.string.battery_optimization_hint), color = Color(0xFFFFC107), fontSize = 11.sp)
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-        }
 
         if (isTrackingActive) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -721,6 +725,37 @@ fun MainScreen(
         ) {
             Text(stringResource(R.string.backup_drive), fontWeight = FontWeight.SemiBold)
         }
+        Spacer(modifier = Modifier.height(14.dp))
+
+        var showRestoreDialog by remember { mutableStateOf(false) }
+
+        OutlinedButton(
+            onClick = {
+                showRestoreDialog = true
+                onOpenRestore()
+            },
+            modifier = pillModifier,
+            shape = pillShape,
+            border = BorderStroke(1.5.dp, TelemetryOnSurfaceMuted),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = TelemetryOnSurfaceMuted)
+        ) {
+            Text(stringResource(R.string.restore_drive), fontWeight = FontWeight.SemiBold)
+        }
+
+        if (showRestoreDialog) {
+            RestoreDialog(
+                backups = driveBackups,
+                loading = driveBackupsLoading,
+                onDismiss = {
+                    showRestoreDialog = false
+                    onDismissRestore()
+                },
+                onConfirm = { fileId, mode ->
+                    showRestoreDialog = false
+                    onConfirmRestore(fileId, mode)
+                }
+            )
+        }
 
         if (backupStatus != null) {
             Spacer(modifier = Modifier.height(10.dp))
@@ -734,34 +769,145 @@ fun MainScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(44.dp))
-
-        // Language Selection
-        val currentLocaleTag = AppCompatDelegate.getApplicationLocales()[0]?.language ?: "en"
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Language, contentDescription = null, tint = TelemetryOnSurfaceMuted)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = stringResource(R.string.select_language), color = TelemetryOnSurfaceMuted)
-        }
-        Row {
-            TextButton(onClick = { onLanguageChange("en") }) {
-                Text(
-                    "English",
-                    color = if (currentLocaleTag == "en") TelemetryAccent else TelemetryOnSurfaceMuted,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            TextButton(onClick = { onLanguageChange("tr") }) {
-                Text(
-                    "Türkçe",
-                    color = if (currentLocaleTag == "tr") TelemetryAccent else TelemetryOnSurfaceMuted,
-                    fontWeight = FontWeight.SemiBold
-                )
+        if (restoreStatus != null) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Box(
+                modifier = Modifier
+                    .background(Color(0xFF1A1A1A), RoundedCornerShape(100.dp))
+                    .border(1.dp, Color(0xFF262626), RoundedCornerShape(100.dp))
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                Text(text = restoreStatus, color = Color(0xFFCCCCCC), fontSize = 12.sp)
             }
         }
 
         Spacer(modifier = Modifier.height(32.dp))
     }
+}
+
+@Composable
+fun RestoreDialog(
+    backups: List<DriveBackupEntry>?,
+    loading: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (fileId: String, mode: RestoreMode) -> Unit
+) {
+    var selectedFileId by remember(backups) { mutableStateOf(backups.orEmpty().firstOrNull()?.fileId) }
+    var selectedMode by remember { mutableStateOf(RestoreMode.MERGE) }
+    val dateFormat = remember { SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = { selectedFileId?.let { onConfirm(it, selectedMode) } },
+                enabled = selectedFileId != null
+            ) {
+                Text(stringResource(R.string.restore_drive), color = TelemetryAccent)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+        title = { Text(stringResource(R.string.restore_dialog_title), color = Color.White) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                if (loading) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = TelemetryAccent, strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            stringResource(R.string.restore_loading),
+                            color = TelemetryOnSurfaceMuted,
+                            fontSize = 12.sp
+                        )
+                    }
+                } else if (backups == null) {
+                    Text(
+                        stringResource(R.string.restore_list_error),
+                        color = Color(0xFFFF8A80),
+                        fontSize = 12.sp
+                    )
+                } else if (backups.isEmpty()) {
+                    Text(
+                        stringResource(R.string.restore_no_backups),
+                        color = TelemetryOnSurfaceMuted,
+                        fontSize = 12.sp
+                    )
+                } else {
+                    Text(
+                        stringResource(R.string.restore_pick_backup),
+                        color = TelemetryOnSurfaceMuted,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    backups.forEach { backup ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedFileId = backup.fileId }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedFileId == backup.fileId,
+                                onClick = { selectedFileId = backup.fileId },
+                                colors = RadioButtonDefaults.colors(selectedColor = TelemetryAccent)
+                            )
+                            Text(
+                                text = dateFormat.format(Date(backup.createdTimeMillis)),
+                                color = Color.White,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        stringResource(R.string.restore_pick_mode),
+                        color = TelemetryOnSurfaceMuted,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { selectedMode = RestoreMode.MERGE },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedMode == RestoreMode.MERGE,
+                            onClick = { selectedMode = RestoreMode.MERGE },
+                            colors = RadioButtonDefaults.colors(selectedColor = TelemetryAccent)
+                        )
+                        Column {
+                            Text(stringResource(R.string.restore_mode_merge), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.restore_mode_merge_hint), color = TelemetryOnSurfaceMuted, fontSize = 11.sp)
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { selectedMode = RestoreMode.REPLACE },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedMode == RestoreMode.REPLACE,
+                            onClick = { selectedMode = RestoreMode.REPLACE },
+                            colors = RadioButtonDefaults.colors(selectedColor = TelemetryAccent)
+                        )
+                        Column {
+                            Text(stringResource(R.string.restore_mode_replace), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.restore_mode_replace_hint), color = TelemetryOnSurfaceMuted, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        },
+        containerColor = Color(0xFF1C1C1C)
+    )
 }
 
 private const val KEY_BATTERY_OPT_PROMPTED = "battery_opt_prompted"

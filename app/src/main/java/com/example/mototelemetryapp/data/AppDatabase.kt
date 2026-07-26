@@ -26,5 +26,11 @@ abstract class AppDatabase : RoomDatabase() {
                 instance
             }
         }
+
+        // Forces any writes still sitting in the WAL file into the main .db file - needed before
+        // copying the db file directly (e.g. for a backup), since WAL is Room's default journal mode.
+        fun checkpoint(context: Context) {
+            getDatabase(context).openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL)").close()
+        }
     }
 }
