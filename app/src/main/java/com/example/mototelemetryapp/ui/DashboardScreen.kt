@@ -60,7 +60,9 @@ fun DashboardScreen(
     onConnectObd: (String) -> Unit = {},
     obdSweepRunning: Boolean = false,
     obdSweepResults: List<ObdSweepEntry> = emptyList(),
-    onRunObdSweep: () -> Unit = {}
+    onRunObdSweep: () -> Unit = {},
+    obdMilOn: Boolean = false,
+    obdDtcCodes: List<String> = emptyList()
 ) {
     val currentLean = if (leanSource == LeanSource.PHONE) data?.leanAnglePhone else data?.leanAngleBike
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -87,6 +89,10 @@ fun DashboardScreen(
                     sweepResults = obdSweepResults,
                     onRunSweep = onRunObdSweep
                 )
+                if (obdMilOn) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    CheckEngineBadge(dtcCodes = obdDtcCodes)
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 SpeedRpmCard(data, isLandscape = true)
             }
@@ -128,14 +134,19 @@ fun DashboardScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 LiveIndicator()
-                ObdStatusBadge(
-                    connected = obdConnected,
-                    onFetchDevices = onFetchObdDevices,
-                    onConnect = onConnectObd,
-                    sweepRunning = obdSweepRunning,
-                    sweepResults = obdSweepResults,
-                    onRunSweep = onRunObdSweep
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (obdMilOn) {
+                        CheckEngineBadge(dtcCodes = obdDtcCodes)
+                    }
+                    ObdStatusBadge(
+                        connected = obdConnected,
+                        onFetchDevices = onFetchObdDevices,
+                        onConnect = onConnectObd,
+                        sweepRunning = obdSweepRunning,
+                        sweepResults = obdSweepResults,
+                        onRunSweep = onRunObdSweep
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(10.dp))
             SpeedGearRpmCard(data)
@@ -308,6 +319,70 @@ fun ObdSweepDialog(running: Boolean, results: List<ObdSweepEntry>, onDismiss: ()
         },
         containerColor = Color(0xFF1C1C1C)
     )
+}
+
+@Composable
+fun CheckEngineBadge(dtcCodes: List<String>, modifier: Modifier = Modifier) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = modifier
+            .background(Color(0xFF2A1414), RoundedCornerShape(100.dp))
+            .border(1.dp, Color(0xFF5A2020), RoundedCornerShape(100.dp))
+            .clickable { showDialog = true }
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFFF5252))
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = stringResource(R.string.obd_check_engine),
+            color = Color(0xFFFF8A80),
+            fontSize = 10.sp,
+            letterSpacing = 0.5.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+
+    if (showDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showDialog = false },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+            title = { Text(stringResource(R.string.obd_dtc_title), color = Color.White) },
+            text = {
+                Column {
+                    if (dtcCodes.isEmpty()) {
+                        Text(
+                            stringResource(R.string.obd_dtc_none_stored),
+                            color = TelemetryOnSurfaceMuted,
+                            fontSize = 12.sp
+                        )
+                    } else {
+                        dtcCodes.forEach { code ->
+                            Text(
+                                code,
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(vertical = 3.dp)
+                            )
+                        }
+                    }
+                }
+            },
+            containerColor = Color(0xFF1C1C1C)
+        )
+    }
 }
 
 @Composable

@@ -213,6 +213,8 @@ class MainActivity : AppCompatActivity() {
                                     val obdConnected by dashboardViewModel.obdConnected.collectAsState()
                                     val obdSweepRunning by dashboardViewModel.obdSweepRunning.collectAsState()
                                     val obdSweepResults by dashboardViewModel.obdSweepResults.collectAsState()
+                                    val obdMilOn by dashboardViewModel.obdMilOn.collectAsState()
+                                    val obdDtcCodes by dashboardViewModel.obdDtcCodes.collectAsState()
 
                                     DashboardScreen(
                                         data = currentData,
@@ -224,7 +226,9 @@ class MainActivity : AppCompatActivity() {
                                         onConnectObd = { address -> dashboardViewModel.connectObd(address) },
                                         obdSweepRunning = obdSweepRunning,
                                         obdSweepResults = obdSweepResults,
-                                        onRunObdSweep = { dashboardViewModel.runObdSweep() }
+                                        onRunObdSweep = { dashboardViewModel.runObdSweep() },
+                                        obdMilOn = obdMilOn,
+                                        obdDtcCodes = obdDtcCodes
                                     )
                                 } else {
                                     val sessions by dashboardViewModel.sessions.collectAsState()

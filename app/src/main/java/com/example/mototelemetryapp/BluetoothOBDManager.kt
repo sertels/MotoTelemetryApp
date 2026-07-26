@@ -52,6 +52,15 @@ class BluetoothOBDManager(private val context: Context) {
     private val _sweepResults = MutableStateFlow<List<ObdSweepEntry>>(emptyList())
     val sweepResults = _sweepResults.asStateFlow()
 
+    // Check-engine (MIL) status and any stored DTCs, refreshed periodically by the data loop.
+    private val _milOn = MutableStateFlow(false)
+    val milOn = _milOn.asStateFlow()
+
+    private val _dtcCodes = MutableStateFlow<List<String>>(emptyList())
+    val dtcCodes = _dtcCodes.asStateFlow()
+
+    private var dataLoopTick = 0
+
     @SuppressLint("MissingPermission")
     fun getPairedDevices(): List<BluetoothDevice> {
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -165,12 +174,39 @@ class BluetoothOBDManager(private val context: Context) {
             while (_isConnected.value) {
                 try {
                     _obdData.value = ioMutex.withLock { pollOnce() }
+
+                    // DTCs don't change fast enough to justify checking every 100ms cycle
+                    // alongside the live gauges, so this only runs every DTC_POLL_INTERVAL_TICKS.
+                    dataLoopTick++
+                    if (dataLoopTick % DTC_POLL_INTERVAL_TICKS == 0) {
+                        ioMutex.withLock { pollDtcStatus() }
+                    }
+
                     delay(100.milliseconds)
                 } catch (e: Exception) {
                     Log.e(tag, "Error in data loop: ${e.message}", e)
                     delay(500.milliseconds) // Wait before retrying
                 }
             }
+        }
+    }
+
+    // Must only run while ioMutex is held. Mode 01 PID 01 gives the MIL (check-engine light)
+    // status and stored-DTC count cheaply; Mode 03 (the actual codes) is only requested when
+    // that count says there's something to fetch.
+    private suspend fun pollDtcStatus() {
+        sendCommand("ATSH7E0")
+        delay(50.milliseconds)
+
+        sendCommand("0101")
+        val (milOn, dtcCount) = parseMonitorStatus(readResponse())
+        _milOn.value = milOn
+
+        if (milOn || dtcCount > 0) {
+            sendCommand("03")
+            _dtcCodes.value = parseDtcCodes(readResponse())
+        } else {
+            _dtcCodes.value = emptyList()
         }
     }
 
@@ -372,6 +408,53 @@ class BluetoothOBDManager(private val context: Context) {
         } catch (_: Exception) { 0 }
     }
 
+    // 41 01 XX ... -> bit 7 of XX is the MIL (check-engine light) state, bits 6-0 are the
+    // stored-DTC count.
+    internal fun parseMonitorStatus(response: String): Pair<Boolean, Int> {
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains("4101")) {
+                val statusByte = Integer.parseInt(clean.substringAfter("4101").take(2), 16)
+                ((statusByte and 0x80) != 0) to (statusByte and 0x7F)
+            } else {
+                false to 0
+            }
+        } catch (_: Exception) {
+            false to 0
+        }
+    }
+
+    // 43 AABB CCDD ... -> each 2-byte pair is one DTC, encoded per SAE J2012: top 2 bits of the
+    // first byte select the letter (P/C/B/U), remaining bits form the 4-digit code.
+    internal fun parseDtcCodes(response: String): List<String> {
+        return try {
+            val clean = response.replace(" ", "")
+            if (!clean.contains("43")) return emptyList()
+            val bytes = clean.substringAfter("43")
+            bytes.chunked(4)
+                .filter { it.length == 4 && it != "0000" }
+                .map { decodeDtc(it) }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun decodeDtc(hex4: String): String {
+        val byte1 = hex4.substring(0, 2).toInt(16)
+        val byte2 = hex4.substring(2, 4).toInt(16)
+        val letter = when ((byte1 shr 6) and 0x03) {
+            0 -> 'P'
+            1 -> 'C'
+            2 -> 'B'
+            else -> 'U'
+        }
+        val digit1 = (byte1 shr 4) and 0x03
+        val digit2 = (byte1 and 0x0F).toString(16).uppercase()
+        val digit3 = ((byte2 shr 4) and 0x0F).toString(16).uppercase()
+        val digit4 = (byte2 and 0x0F).toString(16).uppercase()
+        return "$letter$digit1$digit2$digit3$digit4"
+    }
+
     internal fun parseBrake(response: String, prefix: String): Int {
         // Response format: 62 [PID] [Value]
         return try {
@@ -389,6 +472,8 @@ class BluetoothOBDManager(private val context: Context) {
         try {
             _isConnected.value = false
             socket?.close()
+            _milOn.value = false
+            _dtcCodes.value = emptyList()
             Log.d(tag, "OBD2 Bağlantısı kesildi.")
         } catch (e: IOException) {
             Log.e(tag, "Kapatma hatası: ${e.message}")
@@ -398,6 +483,7 @@ class BluetoothOBDManager(private val context: Context) {
     companion object {
         private const val PREFS_NAME = "obd_prefs"
         private const val KEY_DEVICE_ADDRESS = "device_address"
+        private const val DTC_POLL_INTERVAL_TICKS = 50 // ~5s at the 100ms data-loop cadence
 
         // Standard 11-bit CAN diagnostic request headers (7E0-7E7); 7E0/7E1 are the two
         // already known to answer (engine ECU / ABS-IMU), the rest are unconfirmed.

@@ -126,6 +126,14 @@ class DashboardViewModel : ViewModel() {
     val obdSweepResults = _obdSweepResults.asStateFlow()
     private var obdSweepResultsCollectJob: Job? = null
 
+    private val _obdMilOn = MutableStateFlow(false)
+    val obdMilOn = _obdMilOn.asStateFlow()
+    private var obdMilOnCollectJob: Job? = null
+
+    private val _obdDtcCodes = MutableStateFlow<List<String>>(emptyList())
+    val obdDtcCodes = _obdDtcCodes.asStateFlow()
+    private var obdDtcCodesCollectJob: Job? = null
+
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as TelemetryService.LocalBinder
@@ -144,6 +152,14 @@ class DashboardViewModel : ViewModel() {
             obdSweepResultsCollectJob = telemetryService?.obdSweepResults?.let { flow ->
                 viewModelScope.launch { flow.collect { _obdSweepResults.value = it } }
             }
+            obdMilOnCollectJob?.cancel()
+            obdMilOnCollectJob = telemetryService?.obdMilOn?.let { flow ->
+                viewModelScope.launch { flow.collect { _obdMilOn.value = it } }
+            }
+            obdDtcCodesCollectJob?.cancel()
+            obdDtcCodesCollectJob = telemetryService?.obdDtcCodes?.let { flow ->
+                viewModelScope.launch { flow.collect { _obdDtcCodes.value = it } }
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -154,6 +170,10 @@ class DashboardViewModel : ViewModel() {
             obdSweepRunningCollectJob?.cancel()
             obdSweepResultsCollectJob?.cancel()
             _obdSweepRunning.value = false
+            obdMilOnCollectJob?.cancel()
+            _obdMilOn.value = false
+            obdDtcCodesCollectJob?.cancel()
+            _obdDtcCodes.value = emptyList()
         }
     }
 
@@ -190,6 +210,10 @@ class DashboardViewModel : ViewModel() {
         obdSweepRunningCollectJob?.cancel()
         obdSweepResultsCollectJob?.cancel()
         _obdSweepRunning.value = false
+        obdMilOnCollectJob?.cancel()
+        _obdMilOn.value = false
+        obdDtcCodesCollectJob?.cancel()
+        _obdDtcCodes.value = emptyList()
     }
 
     // Servis bağlıyken akışı expose et

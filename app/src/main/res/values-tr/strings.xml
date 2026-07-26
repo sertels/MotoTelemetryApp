@@ -58,4 +58,7 @@
     <string name="battery_optimization_hint">Ekran kilitlendiğinde kayıt durabilir. Kısıtlamasız pil kullanımına izin vermek için dokunun.</string>
     <string name="auto_start_on_obd_connect">OBD bağlandığında kaydı otomatik başlat</string>
     <string name="ride_grace_period">%1$d dk içinde yeniden bağlanırsa sürüşe devam et</string>
+    <string name="obd_check_engine">MOTOR ARIZASI</string>
+    <string name="obd_dtc_title">Arıza Kodları</string>
+    <string name="obd_dtc_none_stored">Motor arıza lambası yanıyor ama henüz kayıtlı kod okunmadı.</string>
 </resources>
