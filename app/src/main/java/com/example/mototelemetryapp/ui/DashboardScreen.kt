@@ -396,33 +396,41 @@ fun CheckEngineBadge(
     }
 
     if (showClearConfirm) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { showClearConfirm = false },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
-                    onClearDtcs()
-                    showClearConfirm = false
-                    showDialog = false
-                }) {
-                    Text(stringResource(R.string.obd_clear_dtcs), color = Color(0xFFFF8A80))
-                }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { showClearConfirm = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-            title = { Text(stringResource(R.string.obd_clear_dtcs_title), color = Color.White) },
-            text = {
-                Text(
-                    stringResource(R.string.obd_clear_dtcs_message),
-                    color = TelemetryOnSurfaceMuted,
-                    fontSize = 12.sp
-                )
-            },
-            containerColor = Color(0xFF1C1C1C)
+        ClearDtcsConfirmDialog(
+            onDismiss = { showClearConfirm = false },
+            onConfirm = {
+                onClearDtcs()
+                showClearConfirm = false
+                showDialog = false
+            }
         )
     }
+}
+
+@Composable
+fun ClearDtcsConfirmDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.obd_clear_dtcs), color = Color(0xFFFF8A80))
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+        title = { Text(stringResource(R.string.obd_clear_dtcs_title), color = Color.White) },
+        text = {
+            Text(
+                stringResource(R.string.obd_clear_dtcs_message),
+                color = TelemetryOnSurfaceMuted,
+                fontSize = 12.sp
+            )
+        },
+        containerColor = Color(0xFF1C1C1C)
+    )
 }
 
 @Composable

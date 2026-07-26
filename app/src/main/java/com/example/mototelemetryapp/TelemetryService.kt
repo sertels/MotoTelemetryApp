@@ -91,6 +91,10 @@ class TelemetryService : Service() {
     val obdMilOn get() = bluetoothOBDManager?.milOn
     val obdDtcCodes get() = bluetoothOBDManager?.dtcCodes
 
+    // Raw PID map, for values the Bike Info screen wants (e.g. odometer) that aren't part of
+    // the recorded TelemetryRecord shape.
+    val obdRawData get() = bluetoothOBDManager?.obdData
+
     suspend fun clearObdDtcs(): Boolean = bluetoothOBDManager?.clearDtcs() ?: false
 
     suspend fun runObdSweep() {

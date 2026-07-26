@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.TwoWheeler
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -64,6 +65,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.mototelemetryapp.data.RestoreMode
 import com.example.mototelemetryapp.data.Session
 import com.example.mototelemetryapp.ui.AnalysisScreen
+import com.example.mototelemetryapp.ui.BikeInfoScreen
 import com.example.mototelemetryapp.ui.DashboardScreen
 import com.example.mototelemetryapp.ui.HistoryScreen
 import com.example.mototelemetryapp.ui.SettingsScreen
@@ -303,6 +305,13 @@ class MainActivity : AppCompatActivity() {
                                 colors = navItemColors
                             )
                             NavigationBarItem(
+                                icon = { Icon(Icons.Default.TwoWheeler, contentDescription = null) },
+                                label = { Text(stringResource(R.string.bike_info)) },
+                                selected = currentRoute == "bikeinfo",
+                                onClick = { navController.navigate("bikeinfo") },
+                                colors = navItemColors
+                            )
+                            NavigationBarItem(
                                 icon = { Icon(Icons.Default.QueryStats, contentDescription = null) },
                                 label = { Text(stringResource(R.string.analysis)) },
                                 selected = currentRoute == "analysis",
@@ -406,6 +415,28 @@ class MainActivity : AppCompatActivity() {
                             composable("history") {
                                 val history by dashboardViewModel.getLatestSessionRecords(context).collectAsState(initial = emptyList())
                                 HistoryScreen(records = history)
+                            }
+                            composable("bikeinfo") {
+                                val telemetryFlow = if (isBound) dashboardViewModel.getTelemetryFlow() else null
+                                val currentData by (telemetryFlow?.collectAsState(initial = null) ?: remember { mutableStateOf(null) })
+                                val obdConnected by dashboardViewModel.obdConnected.collectAsState()
+                                val obdMilOn by dashboardViewModel.obdMilOn.collectAsState()
+                                val obdDtcCodes by dashboardViewModel.obdDtcCodes.collectAsState()
+                                val obdRawData by dashboardViewModel.obdRawData.collectAsState()
+                                val obdSweepRunning by dashboardViewModel.obdSweepRunning.collectAsState()
+                                val obdSweepResults by dashboardViewModel.obdSweepResults.collectAsState()
+
+                                BikeInfoScreen(
+                                    data = currentData,
+                                    obdConnected = obdConnected,
+                                    odometerKm = obdRawData["ODOMETER"],
+                                    obdMilOn = obdMilOn,
+                                    obdDtcCodes = obdDtcCodes,
+                                    onClearObdDtcs = { dashboardViewModel.clearObdDtcs() },
+                                    obdSweepRunning = obdSweepRunning,
+                                    obdSweepResults = obdSweepResults,
+                                    onRunObdSweep = { dashboardViewModel.runObdSweep() }
+                                )
                             }
                             composable("analysis") {
                                 val sessions by dashboardViewModel.sessions.collectAsState()

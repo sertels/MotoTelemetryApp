@@ -181,6 +181,10 @@ class DashboardViewModel : ViewModel() {
     val obdDtcCodes = _obdDtcCodes.asStateFlow()
     private var obdDtcCodesCollectJob: Job? = null
 
+    private val _obdRawData = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val obdRawData = _obdRawData.asStateFlow()
+    private var obdRawDataCollectJob: Job? = null
+
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as TelemetryService.LocalBinder
@@ -207,6 +211,10 @@ class DashboardViewModel : ViewModel() {
             obdDtcCodesCollectJob = telemetryService?.obdDtcCodes?.let { flow ->
                 viewModelScope.launch { flow.collect { _obdDtcCodes.value = it } }
             }
+            obdRawDataCollectJob?.cancel()
+            obdRawDataCollectJob = telemetryService?.obdRawData?.let { flow ->
+                viewModelScope.launch { flow.collect { _obdRawData.value = it } }
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -221,6 +229,8 @@ class DashboardViewModel : ViewModel() {
             _obdMilOn.value = false
             obdDtcCodesCollectJob?.cancel()
             _obdDtcCodes.value = emptyList()
+            obdRawDataCollectJob?.cancel()
+            _obdRawData.value = emptyMap()
         }
     }
 
@@ -267,6 +277,8 @@ class DashboardViewModel : ViewModel() {
         _obdMilOn.value = false
         obdDtcCodesCollectJob?.cancel()
         _obdDtcCodes.value = emptyList()
+        obdRawDataCollectJob?.cancel()
+        _obdRawData.value = emptyMap()
     }
 
     // Servis bağlıyken akışı expose et

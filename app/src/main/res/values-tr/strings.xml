@@ -84,4 +84,19 @@
     <string name="restore_mode_merge_hint">Bu telefonda henüz olmayan sürüşleri yedekten ekler. Mevcut verilerin tümü korunur.</string>
     <string name="restore_mode_replace">Değiştir</string>
     <string name="restore_mode_replace_hint">Yerel verileri siler ve yedekle değiştirir. Bu yedek alındıktan sonra kaydedilen sürüşler kaybolur.</string>
+    <string name="bike_info">Araç Bilgisi</string>
+    <string name="bike_info_model">Voge 900DSX</string>
+    <string name="bike_info_odometer_label">ECU kilometre sayacı</string>
+    <string name="bike_info_engine_health">MOTOR SAĞLIĞI</string>
+    <string name="bike_info_diagnostics">TANI</string>
+    <string name="bike_info_sensor_map">ONAYLANMIŞ SENSÖR HARİTASI</string>
+    <string name="bike_info_coolant">SOĞUTUCU</string>
+    <string name="bike_info_fuel_level">YAKIT SEVİYESİ</string>
+    <string name="bike_info_fuel_rate">YAKIT TÜKETİMİ</string>
+    <string name="bike_info_battery">AKÜ</string>
+    <string name="bike_info_high_tag">YÜKSEK</string>
+    <string name="bike_info_no_dtc">Kayıtlı arıza kodu yok.</string>
+    <string name="bike_info_check_engine_count">MOTOR ARIZASI · %1$d kod</string>
+    <string name="bike_info_sweep_title">Daha fazla sinyal ara</string>
+    <string name="bike_info_sweep_hint">Akü voltajı, emme sıcaklığı, ABS arızaları — henüz eşlenmedi</string>
 </resources>

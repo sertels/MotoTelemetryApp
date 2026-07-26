@@ -22,6 +22,8 @@ import java.util.UUID
 
 data class ObdSweepEntry(val header: String, val did: String, val response: String)
 
+data class PidMapping(val header: String, val command: String, val signal: String)
+
 class BluetoothOBDManager(private val context: Context) {
 
     private val tag = "BluetoothOBDManager"
@@ -505,6 +507,25 @@ class BluetoothOBDManager(private val context: Context) {
         private const val PREFS_NAME = "obd_prefs"
         private const val KEY_DEVICE_ADDRESS = "device_address"
         private const val DTC_POLL_INTERVAL_TICKS = 50 // ~5s at the 100ms data-loop cadence
+
+        // Mirrors exactly what pollOnce() below requests - the confirmed, working PIDs, kept
+        // here for the Bike Info screen's reference table rather than duplicating this list
+        // in the UI layer.
+        val CONFIRMED_PID_MAP = listOf(
+            PidMapping("7E0", "010C", "RPM"),
+            PidMapping("7E0", "010D", "Speed"),
+            PidMapping("7E0", "2243F7", "Gear"),
+            PidMapping("7E0", "0111", "Throttle"),
+            PidMapping("7E1", "222B05", "Brake front"),
+            PidMapping("7E1", "222B06", "Brake rear"),
+            PidMapping("7E1", "22D10D", "Lean angle (bike)"),
+            PidMapping("7E0", "0105", "Coolant temp"),
+            PidMapping("7E0", "222503", "Odometer"),
+            PidMapping("7E0", "015E", "Fuel rate"),
+            PidMapping("7E0", "012F", "Fuel level"),
+            PidMapping("7E0", "0101", "MIL status / DTC count"),
+            PidMapping("7E0", "03", "Stored DTCs")
+        )
 
         // Standard 11-bit CAN diagnostic request headers (7E0-7E7); 7E0/7E1 are the two
         // already known to answer (engine ECU / ABS-IMU), the rest are unconfirmed.

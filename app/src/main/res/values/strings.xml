@@ -84,4 +84,19 @@
     <string name="restore_mode_merge_hint">Add rides from the backup that aren\'t already on this phone. Keeps everything currently here.</string>
     <string name="restore_mode_replace">Replace</string>
     <string name="restore_mode_replace_hint">Wipe local data and replace it with the backup. Rides recorded since that backup was made will be lost.</string>
+    <string name="bike_info">Bike Info</string>
+    <string name="bike_info_model">Voge 900DSX</string>
+    <string name="bike_info_odometer_label">ECU odometer</string>
+    <string name="bike_info_engine_health">ENGINE HEALTH</string>
+    <string name="bike_info_diagnostics">DIAGNOSTICS</string>
+    <string name="bike_info_sensor_map">CONFIRMED SENSOR MAP</string>
+    <string name="bike_info_coolant">COOLANT</string>
+    <string name="bike_info_fuel_level">FUEL LEVEL</string>
+    <string name="bike_info_fuel_rate">FUEL RATE</string>
+    <string name="bike_info_battery">BATTERY</string>
+    <string name="bike_info_high_tag">HIGH</string>
+    <string name="bike_info_no_dtc">No stored trouble codes.</string>
+    <string name="bike_info_check_engine_count">CHECK ENGINE · %1$d code(s)</string>
+    <string name="bike_info_sweep_title">Look for more signals</string>
+    <string name="bike_info_sweep_hint">Battery voltage, intake temp, ABS faults — not mapped yet</string>
 </resources>
