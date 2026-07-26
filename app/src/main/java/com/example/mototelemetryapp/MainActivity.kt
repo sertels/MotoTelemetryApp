@@ -397,8 +397,11 @@ fun MainScreen(
     }
 
     val context = LocalContext.current
-    val batteryOptPrefs = remember { context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
+    val batteryOptPrefs = remember { context.getSharedPreferences(APP_PREFS_NAME, Context.MODE_PRIVATE) }
     var batteryOptExempt by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
+    var autoStartOnObdConnect by remember {
+        mutableStateOf(batteryOptPrefs.getBoolean(KEY_AUTO_START_ON_OBD_CONNECT, false))
+    }
 
     val batteryOptLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -551,6 +554,33 @@ fun MainScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF161616), RoundedCornerShape(10.dp))
+                .border(1.dp, Color(0xFF232323), RoundedCornerShape(10.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = stringResource(R.string.auto_start_on_obd_connect),
+                color = TelemetryOnSurface,
+                fontSize = 12.sp,
+                modifier = Modifier.weight(1f).padding(end = 8.dp)
+            )
+            Switch(
+                checked = autoStartOnObdConnect,
+                onCheckedChange = { checked ->
+                    autoStartOnObdConnect = checked
+                    batteryOptPrefs.edit().putBoolean(KEY_AUTO_START_ON_OBD_CONNECT, checked).apply()
+                },
+                colors = SwitchDefaults.colors(checkedTrackColor = TelemetryAccent)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         if (!batteryOptExempt) {
             Row(
                 modifier = Modifier
@@ -677,6 +707,8 @@ fun MainScreen(
 }
 
 private const val KEY_BATTERY_OPT_PROMPTED = "battery_opt_prompted"
+const val APP_PREFS_NAME = "app_prefs"
+const val KEY_AUTO_START_ON_OBD_CONNECT = "auto_start_on_obd_connect"
 
 private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
     val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager

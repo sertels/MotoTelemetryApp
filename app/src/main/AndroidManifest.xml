@@ -47,6 +47,16 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- OBD adaptörü Bluetooth üzerinden bağlandığında, ayar açıksa kaydı otomatik başlatır -->
+        <receiver
+            android:name=".ObdAutoStartReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+            </intent-filter>
+        </receiver>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
