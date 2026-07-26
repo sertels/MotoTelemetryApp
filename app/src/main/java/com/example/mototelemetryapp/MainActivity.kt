@@ -181,7 +181,12 @@ class MainActivity : AppCompatActivity() {
                     try {
                         val googleIdOption = GetGoogleIdOption.Builder()
                             .setFilterByAuthorizedAccounts(false)
-                            .setServerClientId("215653511600-csa6ge8s64b5dacl7to64hhscfr0p85s.apps.googleusercontent.com")
+                            // Must be the Web-application OAuth client, not the Android one - Google's
+                            // Credential Manager sign-in uses this as the token audience regardless of
+                            // platform. Using the Android client ID here fails with "[28444] Developer
+                            // console is not set up correctly" even though the Android client itself
+                            // (package + SHA-1) is configured correctly.
+                            .setServerClientId("215653511600-i6891dhdsd6u8hnc05nmipnn1g4gcukj.apps.googleusercontent.com")
                             .build()
 
                         val request = GetCredentialRequest.Builder()
