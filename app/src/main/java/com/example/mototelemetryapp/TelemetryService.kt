@@ -5,13 +5,18 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.bluetooth.BluetoothDevice
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.location.Location
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.example.mototelemetryapp.data.AppDatabase
 import com.example.mototelemetryapp.data.Session
 import com.example.mototelemetryapp.data.TelemetryRecord
@@ -25,6 +30,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.max
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 
 class TelemetryService : Service() {
 
@@ -46,6 +52,11 @@ class TelemetryService : Service() {
     private var maxCoolantTemp: Int = 0
     private var totalFuelConsumedLiters: Float = 0f
     private var trackingStarted = false
+
+    // Set while the OBD link is down and we're waiting to see if it comes back before
+    // finalizing the ride (see onObdLinkLost/onObdLinkRestored).
+    private var graceTimeoutJob: Job? = null
+    private var obdLinkReceiver: BroadcastReceiver? = null
 
     // Live data for UI
     private val _currentTelemetry = MutableStateFlow<TelemetryRecord?>(null)
@@ -84,12 +95,70 @@ class TelemetryService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        
+
         // Initialize components
         bluetoothOBDManager = BluetoothOBDManager(this)
         orientationManager = OrientationManager(this)
         db = AppDatabase.getDatabase(this)
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+
+        registerObdLinkReceiver()
+    }
+
+    // Only reacts while auto-start is enabled and the event is for the remembered OBD device -
+    // this is a live link-state signal (radio-level connect/disconnect), independent of and
+    // more reliable than the SPP polling loop's own isConnected flag.
+    private fun registerObdLinkReceiver() {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                val appPrefs = getSharedPreferences(APP_PREFS_NAME, Context.MODE_PRIVATE)
+                if (!appPrefs.getBoolean(KEY_AUTO_START_ON_OBD_CONNECT, false)) return
+
+                val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                } ?: return
+
+                val preferredAddress = bluetoothOBDManager?.getPreferredDeviceAddress() ?: return
+                if (device.address != preferredAddress) return
+
+                when (intent.action) {
+                    BluetoothDevice.ACTION_ACL_DISCONNECTED -> onObdLinkLost(appPrefs)
+                    BluetoothDevice.ACTION_ACL_CONNECTED -> onObdLinkRestored()
+                }
+            }
+        }
+        obdLinkReceiver = receiver
+        val filter = IntentFilter().apply {
+            addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+            addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+        }
+        ContextCompat.registerReceiver(this, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+    }
+
+    // Engine (and with it, the OBD adapter's power) just cut out. Drop the stale connection
+    // right away so its polling loop stops, then give it a grace window to come back - e.g. a
+    // red light or a quick fuel stop - before treating the ride as over.
+    private fun onObdLinkLost(appPrefs: android.content.SharedPreferences) {
+        graceTimeoutJob?.cancel()
+        bluetoothOBDManager?.disconnect()
+
+        val graceMinutes = appPrefs.getInt(KEY_RIDE_GRACE_PERIOD_MINUTES, DEFAULT_RIDE_GRACE_PERIOD_MINUTES)
+        graceTimeoutJob = serviceScope.launch {
+            delay(graceMinutes.minutes)
+            Log.d("TelemetryService", "OBD link not restored within grace period; ending ride.")
+            stopSelf()
+        }
+    }
+
+    // Engine restarted. If this is within the grace window, currentSessionId is untouched so
+    // reconnecting just resumes writing records into the same ride.
+    private fun onObdLinkRestored() {
+        graceTimeoutJob?.cancel()
+        graceTimeoutJob = null
+        serviceScope.launch { bluetoothOBDManager?.connect() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -284,7 +353,16 @@ class TelemetryService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        
+
+        graceTimeoutJob?.cancel()
+        obdLinkReceiver?.let {
+            try {
+                unregisterReceiver(it)
+            } catch (e: IllegalArgumentException) {
+                Log.w("TelemetryService", "OBD link receiver already unregistered")
+            }
+        }
+
         // Save final session data synchronously
         try {
             val database = db

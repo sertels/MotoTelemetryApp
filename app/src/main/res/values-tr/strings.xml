@@ -57,4 +57,5 @@
     <string name="obd_sweep_hint">CAN başlıkları ve UDS tanımlayıcıları yanıt için taranıyor. Bu yaklaşık bir dakika sürer.</string>
     <string name="battery_optimization_hint">Ekran kilitlendiğinde kayıt durabilir. Kısıtlamasız pil kullanımına izin vermek için dokunun.</string>
     <string name="auto_start_on_obd_connect">OBD bağlandığında kaydı otomatik başlat</string>
+    <string name="ride_grace_period">%1$d dk içinde yeniden bağlanırsa sürüşe devam et</string>
 </resources>

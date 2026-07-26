@@ -402,6 +402,9 @@ fun MainScreen(
     var autoStartOnObdConnect by remember {
         mutableStateOf(batteryOptPrefs.getBoolean(KEY_AUTO_START_ON_OBD_CONNECT, false))
     }
+    var rideGracePeriodMinutes by remember {
+        mutableStateOf(batteryOptPrefs.getInt(KEY_RIDE_GRACE_PERIOD_MINUTES, DEFAULT_RIDE_GRACE_PERIOD_MINUTES))
+    }
 
     val batteryOptLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -579,6 +582,56 @@ fun MainScreen(
             )
         }
 
+        if (autoStartOnObdConnect) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF161616), RoundedCornerShape(10.dp))
+                    .border(1.dp, Color(0xFF232323), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = stringResource(R.string.ride_grace_period, rideGracePeriodMinutes),
+                    color = TelemetryOnSurface,
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f).padding(end = 8.dp)
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = {
+                            val newValue = (rideGracePeriodMinutes - 1).coerceAtLeast(MIN_RIDE_GRACE_PERIOD_MINUTES)
+                            rideGracePeriodMinutes = newValue
+                            batteryOptPrefs.edit().putInt(KEY_RIDE_GRACE_PERIOD_MINUTES, newValue).apply()
+                        },
+                        enabled = rideGracePeriodMinutes > MIN_RIDE_GRACE_PERIOD_MINUTES
+                    ) {
+                        Text(text = "−", color = TelemetryAccent, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Text(
+                        text = "$rideGracePeriodMinutes",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.widthIn(min = 24.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    IconButton(
+                        onClick = {
+                            val newValue = (rideGracePeriodMinutes + 1).coerceAtMost(MAX_RIDE_GRACE_PERIOD_MINUTES)
+                            rideGracePeriodMinutes = newValue
+                            batteryOptPrefs.edit().putInt(KEY_RIDE_GRACE_PERIOD_MINUTES, newValue).apply()
+                        },
+                        enabled = rideGracePeriodMinutes < MAX_RIDE_GRACE_PERIOD_MINUTES
+                    ) {
+                        Text(text = "+", color = TelemetryAccent, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
 
         if (!batteryOptExempt) {
@@ -709,6 +762,10 @@ fun MainScreen(
 private const val KEY_BATTERY_OPT_PROMPTED = "battery_opt_prompted"
 const val APP_PREFS_NAME = "app_prefs"
 const val KEY_AUTO_START_ON_OBD_CONNECT = "auto_start_on_obd_connect"
+const val KEY_RIDE_GRACE_PERIOD_MINUTES = "ride_grace_period_minutes"
+const val DEFAULT_RIDE_GRACE_PERIOD_MINUTES = 10
+const val MIN_RIDE_GRACE_PERIOD_MINUTES = 1
+const val MAX_RIDE_GRACE_PERIOD_MINUTES = 60
 
 private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
     val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
