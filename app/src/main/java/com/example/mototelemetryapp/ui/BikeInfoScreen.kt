@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.sp
 import com.example.mototelemetryapp.BluetoothOBDManager
 import com.example.mototelemetryapp.ObdSweepEntry
 import com.example.mototelemetryapp.R
-import com.example.mototelemetryapp.data.TelemetryRecord
 import com.example.mototelemetryapp.ui.theme.TelemetryAccent
 import com.example.mototelemetryapp.ui.theme.TelemetryOnSurfaceMuted
 
@@ -41,9 +40,11 @@ private const val COOLANT_HOT_THRESHOLD_C = 100
 
 @Composable
 fun BikeInfoScreen(
-    data: TelemetryRecord?,
     obdConnected: Boolean,
     odometerKm: Int?,
+    coolantC: Int?,
+    fuelLevelPct: Int?,
+    fuelRateLph: Float?,
     obdMilOn: Boolean,
     obdDtcCodes: List<String>,
     onClearObdDtcs: () -> Unit,
@@ -135,7 +136,7 @@ fun BikeInfoScreen(
         SectionLabel(stringResource(R.string.bike_info_engine_health))
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                val coolant = data?.coolantTemp ?: 0
+                val coolant = coolantC ?: 0
                 StatCard(
                     label = stringResource(R.string.bike_info_coolant),
                     value = "$coolant",
@@ -145,7 +146,7 @@ fun BikeInfoScreen(
                 )
                 StatCard(
                     label = stringResource(R.string.bike_info_fuel_level),
-                    value = "${data?.fuelLevel ?: 0}",
+                    value = "${fuelLevelPct ?: 0}",
                     unit = "%",
                     modifier = Modifier.weight(1f)
                 )
@@ -153,7 +154,7 @@ fun BikeInfoScreen(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 StatCard(
                     label = stringResource(R.string.bike_info_fuel_rate),
-                    value = "%.1f".format(data?.fuelRate ?: 0f),
+                    value = "%.1f".format(fuelRateLph ?: 0f),
                     unit = "L/h",
                     modifier = Modifier.weight(1f)
                 )

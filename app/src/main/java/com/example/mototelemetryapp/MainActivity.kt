@@ -427,8 +427,6 @@ class MainActivity : AppCompatActivity() {
                                 HistoryScreen(records = history)
                             }
                             composable("bikeinfo") {
-                                val telemetryFlow = if (isBound) dashboardViewModel.getTelemetryFlow() else null
-                                val currentData by (telemetryFlow?.collectAsState(initial = null) ?: remember { mutableStateOf(null) })
                                 val obdConnected by dashboardViewModel.obdConnected.collectAsState()
                                 val obdMilOn by dashboardViewModel.obdMilOn.collectAsState()
                                 val obdDtcCodes by dashboardViewModel.obdDtcCodes.collectAsState()
@@ -438,9 +436,11 @@ class MainActivity : AppCompatActivity() {
                                 val obdSweepProgress by dashboardViewModel.obdSweepProgress.collectAsState()
 
                                 BikeInfoScreen(
-                                    data = currentData,
                                     obdConnected = obdConnected,
                                     odometerKm = obdRawData["ODOMETER"],
+                                    coolantC = obdRawData["COOLANT"],
+                                    fuelLevelPct = obdRawData["FUEL_LEVEL"],
+                                    fuelRateLph = obdRawData["FUEL_RATE"]?.let { it / 100f },
                                     obdMilOn = obdMilOn,
                                     obdDtcCodes = obdDtcCodes,
                                     onClearObdDtcs = { dashboardViewModel.clearObdDtcs() },
