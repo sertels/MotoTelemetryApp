@@ -45,6 +45,7 @@ class TelemetryService : Service() {
     private var maxLeanRight: Float = 0f
     private var maxCoolantTemp: Int = 0
     private var totalFuelConsumedLiters: Float = 0f
+    private var trackingStarted = false
 
     // Live data for UI
     private val _currentTelemetry = MutableStateFlow<TelemetryRecord?>(null)
@@ -105,9 +106,15 @@ class TelemetryService : Service() {
             android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
         )
 
-        startLocationUpdates()
-        orientationManager?.start()
-        startTelemetryTracking()
+        // onStartCommand can fire again while already tracking (e.g. the OBD auto-start
+        // receiver re-triggering on a flaky Bluetooth reconnect) - guard against spinning up
+        // a second session/telemetry loop on top of the running one.
+        if (!trackingStarted) {
+            trackingStarted = true
+            startLocationUpdates()
+            orientationManager?.start()
+            startTelemetryTracking()
+        }
 
         return START_STICKY
     }
