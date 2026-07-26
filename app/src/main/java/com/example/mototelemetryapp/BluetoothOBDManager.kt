@@ -69,6 +69,19 @@ class BluetoothOBDManager(private val context: Context) {
 
     private var dataLoopTick = 0
 
+    // Tracks the ELM327's currently active diagnostic header so redundant ATSH commands can
+    // be skipped - each one costs a settle delay plus a round trip, and pollOnce() was
+    // resending the same header it was already on every single cycle.
+    private var currentHeader: String? = null
+
+    private suspend fun setHeader(header: String) {
+        if (currentHeader == header) return
+        sendCommand("ATSH$header")
+        delay(50.milliseconds)
+        readResponse() // drain the "OK" reply so it can't be mistaken for the next command's response
+        currentHeader = header
+    }
+
     @SuppressLint("MissingPermission")
     fun getPairedDevices(): List<BluetoothDevice> {
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
@@ -124,6 +137,10 @@ class BluetoothOBDManager(private val context: Context) {
             socket?.connect()
             outputStream = socket?.outputStream
             inputStream = socket?.inputStream
+
+            // ATZ (sent by initELM327 below) resets the adapter, so any header set on a
+            // previous connection is no longer valid.
+            currentHeader = null
 
             if (initELM327()) {
                 _isConnected.value = true
@@ -224,8 +241,7 @@ class BluetoothOBDManager(private val context: Context) {
     // status and stored-DTC count cheaply; Mode 03 (the actual codes) is only requested when
     // that count says there's something to fetch.
     private suspend fun pollDtcStatus() {
-        sendCommand("ATSH7E0")
-        delay(50.milliseconds)
+        setHeader("7E0")
 
         sendCommand("0101")
         val (milOn, dtcCount) = parseMonitorStatus(readResponse())
@@ -245,8 +261,7 @@ class BluetoothOBDManager(private val context: Context) {
         if (!_isConnected.value) return@withContext false
 
         ioMutex.withLock {
-            sendCommand("ATSH7E0")
-            delay(50.milliseconds)
+            setHeader("7E0")
 
             sendCommand("04")
             val response = readResponse().replace(" ", "")
@@ -261,10 +276,13 @@ class BluetoothOBDManager(private val context: Context) {
     }
 
     // One full read cycle across both known headers. Must only run while ioMutex is held.
+    //
+    // All 7E0 reads are grouped before the 7E1 ones (and vice versa next cycle) so this only
+    // ever crosses the header boundary once per call instead of three times - setHeader()
+    // itself also skips the command entirely when the adapter's already on the right header.
     private suspend fun pollOnce(): Map<String, Int> {
-        // --- Engine Data (Header 7E0) ---
-        sendCommand("ATSH7E0")
-        delay(50.milliseconds)
+        // --- Engine, Coolant, Odometer & Fuel (Header 7E0) ---
+        setHeader("7E0")
 
         sendCommand("010C")
         val rpm = parseRPM(readResponse())
@@ -278,9 +296,20 @@ class BluetoothOBDManager(private val context: Context) {
         sendCommand("0111")
         val throttle = parseThrottle(readResponse())
 
+        sendCommand("0105")
+        val coolant = parseCoolant(readResponse())
+
+        sendCommand("222503")
+        val odometer = parseOdometer(readResponse())
+
+        sendCommand("015E")
+        val fuelRate = parseFuelRate(readResponse())
+
+        sendCommand("012F")
+        val fuelLevel = parseFuelLevel(readResponse())
+
         // --- ABS/IMU Data (Header 7E1) ---
-        sendCommand("ATSH7E1")
-        delay(50.milliseconds)
+        setHeader("7E1")
 
         sendCommand("222B05")
         val brakeFront = parseBrake(readResponse(), "622B05")
@@ -290,23 +319,6 @@ class BluetoothOBDManager(private val context: Context) {
 
         sendCommand("22D10D")
         val leanBike = parseLeanBike(readResponse())
-
-        // --- Coolant & Odometer (Standard & UDS, header 7E0) ---
-        sendCommand("ATSH7E0")
-        delay(50.milliseconds)
-
-        sendCommand("0105")
-        val coolant = parseCoolant(readResponse())
-
-        sendCommand("222503")
-        val odometer = parseOdometer(readResponse())
-
-        // --- Fuel Data ---
-        sendCommand("015E")
-        val fuelRate = parseFuelRate(readResponse())
-
-        sendCommand("012F")
-        val fuelLevel = parseFuelLevel(readResponse())
 
         return mapOf(
             "RPM" to rpm,
@@ -341,9 +353,7 @@ class BluetoothOBDManager(private val context: Context) {
             withContext(Dispatchers.IO) {
                 ioMutex.withLock {
                     for (header in headers) {
-                        sendCommand("ATSH$header")
-                        delay(50.milliseconds)
-                        readResponse()
+                        setHeader(header)
 
                         for (did in dids) {
                             sendCommand("22$did")
@@ -355,9 +365,7 @@ class BluetoothOBDManager(private val context: Context) {
                         }
                     }
                     // Restore the header the normal polling loop expects.
-                    sendCommand("ATSH7E0")
-                    delay(50.milliseconds)
-                    readResponse()
+                    setHeader("7E0")
                 }
             }
         } finally {
@@ -533,6 +541,7 @@ class BluetoothOBDManager(private val context: Context) {
             socket?.close()
             _milOn.value = false
             _dtcCodes.value = emptyList()
+            currentHeader = null
             Log.d(tag, "OBD2 Bağlantısı kesildi.")
         } catch (e: IOException) {
             Log.e(tag, "Kapatma hatası: ${e.message}")
