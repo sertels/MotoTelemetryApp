@@ -41,6 +41,12 @@
     <string name="stat_gps">GPS</string>
     <string name="stat_max_lean">MAX LEAN</string>
     <string name="quick_access">QUICK ACCESS</string>
+    <string name="fuel_range_label">range</string>
+    <string name="today_ride">TODAY\'S RIDE</string>
+    <string name="stat_distance">DISTANCE</string>
+    <string name="stat_duration">DURATION</string>
+    <string name="view_live_ride">View Live Ride</string>
+    <string name="tracking_active_pill">TRACKING ACTIVE</string>
     <string name="rename_ride">Rename Ride</string>
     <string name="save">Save</string>
     <string name="delete_ride_title">Delete Ride</string>

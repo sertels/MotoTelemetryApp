@@ -45,6 +45,7 @@ fun BikeInfoScreen(
     onConnectObd: (String) -> Unit,
     onDisconnectObd: () -> Unit = {},
     odometerKm: Int?,
+    serviceRemainingKm: Int?,
     coolantC: Int?,
     fuelLevelPct: Int?,
     fuelRateLph: Float?,
@@ -121,6 +122,14 @@ fun BikeInfoScreen(
                     color = TelemetryOnSurfaceMuted,
                     fontSize = 11.sp,
                     modifier = Modifier.padding(bottom = 3.dp)
+                )
+            }
+            if (serviceRemainingKm != null) {
+                Text(
+                    text = "${stringResource(R.string.service)} · %,d ${stringResource(R.string.km_left)}".format(serviceRemainingKm),
+                    color = TelemetryOnSurfaceMuted,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 4.dp)
                 )
             }
         }

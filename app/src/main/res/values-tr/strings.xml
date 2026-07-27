@@ -41,6 +41,12 @@
     <string name="stat_gps">GPS</string>
     <string name="stat_max_lean">MAKS YATIŞ</string>
     <string name="quick_access">HIZLI ERİŞİM</string>
+    <string name="fuel_range_label">menzil</string>
+    <string name="today_ride">BUGÜNKÜ SÜRÜŞ</string>
+    <string name="stat_distance">MESAFE</string>
+    <string name="stat_duration">SÜRE</string>
+    <string name="view_live_ride">Canlı Sürüşü Görüntüle</string>
+    <string name="tracking_active_pill">TAKİP AKTİF</string>
     <string name="rename_ride">Sürüşü Yeniden Adlandır</string>
     <string name="save">Kaydet</string>
     <string name="delete_ride_title">Sürüşü Sil</string>

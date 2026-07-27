@@ -3,6 +3,7 @@ package com.example.mototelemetryapp
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.res.Configuration
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -19,6 +20,7 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -41,9 +43,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -313,7 +320,11 @@ class MainActivity : AppCompatActivity() {
                             }
                         )
                     },
-                    bottomBar = {
+                    bottomBar = bottomBar@{
+                        // Matches the design: the tab bar only makes sense once bound to a
+                        // session (Panel/History/Bike Info/Analysis/Settings) - the Launch/Home
+                        // screen has its own Quick Access grid instead.
+                        if (!isBound) return@bottomBar
                         val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
                         val navItemColors = NavigationBarItemDefaults.colors(
                             selectedIconColor = TelemetryAccent,
@@ -399,21 +410,31 @@ class MainActivity : AppCompatActivity() {
                                     )
                                 } else {
                                     val sessions by dashboardViewModel.sessions.collectAsState()
+                                    val obdConnected by dashboardViewModel.obdConnected.collectAsState()
                                     val fuelLevelPct by dashboardViewModel.fuelLevelPct.collectAsState()
                                     val serviceRemainingKm by dashboardViewModel.serviceRemainingKm.collectAsState()
+                                    val fuelRangeKm by dashboardViewModel.fuelRangeKm.collectAsState()
+                                    val todayDistanceKm by dashboardViewModel.todayDistanceKm.collectAsState()
+                                    val todayDurationLabel by dashboardViewModel.todayDurationLabel.collectAsState()
+                                    val todayAvgSpeedKmh by dashboardViewModel.todayAvgSpeedKmh.collectAsState()
                                     val backupStatus by dashboardViewModel.backupStatus.collectAsState()
                                     val restoreStatus by dashboardViewModel.restoreStatus.collectAsState()
                                     val driveBackups by dashboardViewModel.driveBackups.collectAsState()
                                     val driveBackupsLoading by dashboardViewModel.driveBackupsLoading.collectAsState()
                                     MainScreen(
                                         isTrackingActive = isTrackingActive,
+                                        obdConnected = obdConnected,
                                         lastRide = sessions.firstOrNull(),
                                         fuelLevelPct = fuelLevelPct,
-                                        serviceRemainingKm = serviceRemainingKm,
+                                        fuelRangeKm = fuelRangeKm,
+                                        todayDistanceKm = todayDistanceKm,
+                                        todayDurationLabel = todayDurationLabel,
+                                        todayAvgSpeedKmh = todayAvgSpeedKmh,
                                         backupStatus = backupStatus,
                                         restoreStatus = restoreStatus,
                                         driveBackups = driveBackups,
                                         driveBackupsLoading = driveBackupsLoading,
+                                        onNavigateBikeInfo = { navController.navigate("bikeinfo") },
                                         onStartService = {
                                             startTelemetryService()
                                             dashboardViewModel.setTrackingActive(true)
@@ -431,7 +452,6 @@ class MainActivity : AppCompatActivity() {
                                         onGoToPanel = { dashboardViewModel.bindService(context) },
                                         onNavigateHistory = { navController.navigate("history") },
                                         onNavigateAnalysis = { navController.navigate("analysis") },
-                                        onNavigateSettings = { navController.navigate("settings") },
                                         onBackup = {
                                             requestDriveAccessToken(onToken = { token ->
                                                 dashboardViewModel.backupToCloud(context, token)
@@ -475,6 +495,8 @@ class MainActivity : AppCompatActivity() {
                                 val obdSweepRunning by dashboardViewModel.obdSweepRunning.collectAsState()
                                 val obdSweepResults by dashboardViewModel.obdSweepResults.collectAsState()
                                 val obdSweepProgress by dashboardViewModel.obdSweepProgress.collectAsState()
+                                val serviceRemainingKm by dashboardViewModel.serviceRemainingKm.collectAsState()
+                                LaunchedEffect(Unit) { dashboardViewModel.fetchDashboardSummary(context) }
 
                                 BikeInfoScreen(
                                     obdConnected = obdConnected,
@@ -482,6 +504,7 @@ class MainActivity : AppCompatActivity() {
                                     onConnectObd = { address -> dashboardViewModel.connectObd(context, address) },
                                     onDisconnectObd = { dashboardViewModel.disconnectObd() },
                                     odometerKm = obdRawData["ODOMETER"],
+                                    serviceRemainingKm = serviceRemainingKm,
                                     coolantC = obdRawData["COOLANT"],
                                     fuelLevelPct = obdRawData["FUEL_LEVEL"],
                                     fuelRateLph = obdRawData["FUEL_RATE"]?.let { it / 100f },
@@ -562,12 +585,27 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
+private val HomeCardBg = Color(0xFF161616)
+private val HomeCardBorder = Color(0xFF232323)
+private val HomeBorderSoft = Color(0xFF262626)
+private val HomeTrackGrey = Color(0xFF2B2B2B)
+private val HomeFuelYellow = Color(0xFFFFE600)
+private val HomeTextTertiary = Color(0xFF7A7A7A)
+private val HomeTextQuaternary = Color(0xFF5A5A5A)
+private val HomeModelGrey = Color(0xFF666666)
+private val HomeStopRed = Color(0xFFFF5A6E)
+private val HomeToastBg = Color(0xFF1A1A1A)
+
 @Composable
 fun MainScreen(
     isTrackingActive: Boolean,
+    obdConnected: Boolean,
     lastRide: Session?,
     fuelLevelPct: Int?,
-    serviceRemainingKm: Int?,
+    fuelRangeKm: Int?,
+    todayDistanceKm: Float?,
+    todayDurationLabel: String?,
+    todayAvgSpeedKmh: Int?,
     backupStatus: String?,
     restoreStatus: String?,
     driveBackups: List<DriveBackupEntry>?,
@@ -577,280 +615,552 @@ fun MainScreen(
     onGoToPanel: () -> Unit,
     onNavigateHistory: () -> Unit,
     onNavigateAnalysis: () -> Unit,
-    onNavigateSettings: () -> Unit,
+    onNavigateBikeInfo: () -> Unit,
     onBackup: () -> Unit,
     onOpenRestore: () -> Unit,
     onDismissRestore: () -> Unit,
     onConfirmRestore: (fileId: String, mode: RestoreMode) -> Unit
 ) {
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    var showRestoreDialog by remember { mutableStateOf(false) }
+    val backgroundBrush = Brush.radialGradient(
+        colors = listOf(Color(0xFF1A1A1A), Color(0xFF0A0A0A)),
+        radius = 1100f
+    )
+
+    val content: @Composable () -> Unit = {
+        if (isLandscape) {
+            HomeLandscapeContent(
+                isTrackingActive = isTrackingActive,
+                obdConnected = obdConnected,
+                lastRide = lastRide,
+                fuelLevelPct = fuelLevelPct,
+                fuelRangeKm = fuelRangeKm,
+                todayDistanceKm = todayDistanceKm,
+                todayDurationLabel = todayDurationLabel,
+                todayAvgSpeedKmh = todayAvgSpeedKmh,
+                onStartService = onStartService,
+                onStopService = onStopService,
+                onGoToPanel = onGoToPanel,
+                onNavigateHistory = onNavigateHistory,
+                onNavigateAnalysis = onNavigateAnalysis,
+                onNavigateBikeInfo = onNavigateBikeInfo,
+                onBackup = onBackup,
+                onOpenRestore = { showRestoreDialog = true; onOpenRestore() }
+            )
+        } else {
+            HomePortraitContent(
+                isTrackingActive = isTrackingActive,
+                obdConnected = obdConnected,
+                lastRide = lastRide,
+                fuelLevelPct = fuelLevelPct,
+                fuelRangeKm = fuelRangeKm,
+                todayDistanceKm = todayDistanceKm,
+                todayDurationLabel = todayDurationLabel,
+                todayAvgSpeedKmh = todayAvgSpeedKmh,
+                onStartService = onStartService,
+                onStopService = onStopService,
+                onGoToPanel = onGoToPanel,
+                onNavigateHistory = onNavigateHistory,
+                onNavigateAnalysis = onNavigateAnalysis,
+                onNavigateBikeInfo = onNavigateBikeInfo,
+                onBackup = onBackup,
+                onOpenRestore = { showRestoreDialog = true; onOpenRestore() }
+            )
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(backgroundBrush)) {
+        content()
+
+        Column(
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (backupStatus != null) {
+                Box(
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .background(HomeToastBg, RoundedCornerShape(100.dp))
+                        .border(1.dp, HomeBorderSoft, RoundedCornerShape(100.dp))
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                ) {
+                    Text(text = backupStatus, color = Color(0xFFCCCCCC), fontSize = 12.sp)
+                }
+            }
+            if (restoreStatus != null) {
+                Box(
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .background(HomeToastBg, RoundedCornerShape(100.dp))
+                        .border(1.dp, HomeBorderSoft, RoundedCornerShape(100.dp))
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                ) {
+                    Text(text = restoreStatus, color = Color(0xFFCCCCCC), fontSize = 12.sp)
+                }
+            }
+        }
+    }
+
+    if (showRestoreDialog) {
+        RestoreDialog(
+            backups = driveBackups,
+            loading = driveBackupsLoading,
+            onDismiss = {
+                showRestoreDialog = false
+                onDismissRestore()
+            },
+            onConfirm = { fileId, mode ->
+                showRestoreDialog = false
+                onConfirmRestore(fileId, mode)
+            }
+        )
+    }
+}
+
+@Composable
+private fun HomeStatusPill(obdConnected: Boolean, fontSize: androidx.compose.ui.unit.TextUnit = 11.sp) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .clip(CircleShape)
+                .background(if (obdConnected) TelemetryAccent else HomeTextQuaternary)
+        )
+        Text(
+            text = stringResource(if (obdConnected) R.string.obd_connected else R.string.obd_disconnected),
+            color = if (obdConnected) TelemetryAccent else HomeTextQuaternary,
+            fontSize = fontSize,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.5.sp
+        )
+    }
+}
+
+@Composable
+private fun FuelRing(pct: Int?, ringSize: androidx.compose.ui.unit.Dp, stroke: androidx.compose.ui.unit.Dp) {
+    val fraction = ((pct ?: 0).coerceIn(0, 100)) / 100f
+    Box(modifier = Modifier.size(ringSize), contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokePx = stroke.toPx()
+            val arcSize = Size(size.width - strokePx, size.height - strokePx)
+            val topLeft = Offset(strokePx / 2f, strokePx / 2f)
+            drawArc(
+                color = HomeTrackGrey,
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                style = Stroke(width = strokePx, cap = StrokeCap.Round),
+                topLeft = topLeft,
+                size = arcSize
+            )
+            drawArc(
+                color = HomeFuelYellow,
+                startAngle = -90f,
+                sweepAngle = 360f * fraction,
+                useCenter = false,
+                style = Stroke(width = strokePx, cap = StrokeCap.Round),
+                topLeft = topLeft,
+                size = arcSize
+            )
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(text = "${pct ?: 0}", color = Color.White, fontSize = (ringSize.value * 0.23f).sp, fontWeight = FontWeight.Bold)
+            Text(text = "%", color = HomeTextTertiary, fontSize = (ringSize.value * 0.10f).sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
+private fun FuelHeroCard(
+    fuelLevelPct: Int?,
+    fuelRangeKm: Int?,
+    lastRide: Session?,
+    ringSize: androidx.compose.ui.unit.Dp,
+    ringStroke: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .background(Brush.linearGradient(listOf(Color(0xFF1C1C1C), Color(0xFF131313))), RoundedCornerShape(22.dp))
+            .border(1.dp, HomeBorderSoft, RoundedCornerShape(22.dp))
+            .padding(20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        FuelRing(pct = fuelLevelPct, ringSize = ringSize, stroke = ringStroke)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column {
+                Text(text = stringResource(R.string.fuel), color = HomeTextTertiary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = "${fuelRangeKm ?: "--"} km",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = stringResource(R.string.fuel_range_label), color = HomeTextTertiary, fontSize = 11.sp)
+                }
+            }
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(HomeBorderSoft))
+            Column {
+                Text(text = stringResource(R.string.last_ride), color = HomeTextTertiary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Row(modifier = Modifier.padding(top = 2.dp)) {
+                    Text(
+                        text = (lastRide?.name ?: "—") + " · ",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = if (lastRide != null) "%.1f km".format(lastRide.totalDistanceGpsKm) else "",
+                        color = TelemetryAccent,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodayRideCard(
+    distanceKm: Float?,
+    durationLabel: String?,
+    avgSpeedKmh: Int?,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .background(HomeCardBg, RoundedCornerShape(18.dp))
+            .border(1.dp, HomeCardBorder, RoundedCornerShape(18.dp))
+            .padding(horizontal = 18.dp, vertical = 14.dp)
+    ) {
+        Text(text = stringResource(R.string.today_ride), color = HomeTextTertiary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(text = "%.1f".format(distanceKm ?: 0f), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text(text = " km", color = HomeTextTertiary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Text(text = stringResource(R.string.stat_distance), color = HomeTextQuaternary, fontSize = 9.sp, modifier = Modifier.padding(top = 2.dp))
+            }
+            Column {
+                Text(text = durationLabel ?: "0m", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text(text = stringResource(R.string.stat_duration), color = HomeTextQuaternary, fontSize = 9.sp, modifier = Modifier.padding(top = 2.dp))
+            }
+            Column {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(text = "${avgSpeedKmh ?: 0}", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text(text = " " + stringResource(R.string.unit_kmh), color = HomeTextTertiary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Text(text = stringResource(R.string.avg_kmh), color = HomeTextQuaternary, fontSize = 9.sp, modifier = Modifier.padding(top = 2.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeQuickAccessGrid(
+    onGoToPanel: () -> Unit,
+    onNavigateHistory: () -> Unit,
+    onNavigateAnalysis: () -> Unit,
+    onNavigateBikeInfo: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        QuickAccessButton(icon = Icons.Default.Speed, label = stringResource(R.string.panel), onClick = onGoToPanel, modifier = Modifier.weight(1f))
+        QuickAccessButton(icon = Icons.Default.History, label = stringResource(R.string.history), onClick = onNavigateHistory, modifier = Modifier.weight(1f))
+        QuickAccessButton(icon = Icons.Default.QueryStats, label = stringResource(R.string.analysis), onClick = onNavigateAnalysis, modifier = Modifier.weight(1f))
+        QuickAccessButton(icon = Icons.Default.TwoWheeler, label = stringResource(R.string.bike_info), onClick = onNavigateBikeInfo, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun HomeCtaStack(
+    isTrackingActive: Boolean,
+    onStartService: () -> Unit,
+    onStopService: () -> Unit,
+    onGoToPanel: () -> Unit,
+    onBackup: () -> Unit,
+    onOpenRestore: () -> Unit,
+    pillModifier: Modifier,
+    buttonHeight: androidx.compose.ui.unit.Dp
+) {
+    val pillShape = RoundedCornerShape(50)
+    val textSize = if (buttonHeight > 46.dp) 15.sp else 14.sp
+
+    if (isTrackingActive) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(TelemetryAccent)
+            )
+            Text(
+                text = stringResource(R.string.tracking_active_pill),
+                color = TelemetryAccent,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.8.sp,
+                modifier = Modifier
+                    .background(Color(0x1F00B4FF), RoundedCornerShape(100.dp))
+                    .border(1.dp, Color(0x6600B4FF), RoundedCornerShape(100.dp))
+                    .padding(horizontal = 0.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+    }
+
+    Button(
+        onClick = { if (isTrackingActive) onGoToPanel() else onStartService() },
+        modifier = pillModifier.height(buttonHeight),
+        shape = pillShape,
+        colors = ButtonDefaults.buttonColors(containerColor = TelemetryAccent, contentColor = TelemetryOnAccent)
+    ) {
+        Text(
+            stringResource(if (isTrackingActive) R.string.view_live_ride else R.string.start_tracking),
+            fontWeight = FontWeight.Bold,
+            fontSize = textSize
+        )
+    }
+    Spacer(modifier = Modifier.height(10.dp))
+
+    OutlinedButton(
+        onClick = onStopService,
+        enabled = isTrackingActive,
+        modifier = pillModifier.height(buttonHeight),
+        shape = pillShape,
+        border = BorderStroke(1.dp, if (isTrackingActive) HomeStopRed else Color(0xFF383838)),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = HomeStopRed,
+            disabledContentColor = TelemetryOnSurfaceMuted
+        )
+    ) {
+        Text(stringResource(R.string.stop), fontWeight = FontWeight.SemiBold, fontSize = textSize)
+    }
+    Spacer(modifier = Modifier.height(10.dp))
+
+    // A REPLACE restore mid-ride deletes the session row the service is still writing to,
+    // silently losing the whole ride, so both actions are blocked while tracking is active.
+    OutlinedButton(
+        onClick = onBackup,
+        enabled = !isTrackingActive,
+        modifier = pillModifier.height(buttonHeight),
+        shape = pillShape,
+        border = BorderStroke(1.5.dp, TelemetryAccent),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = TelemetryAccent)
+    ) {
+        Text(stringResource(R.string.backup_drive), fontWeight = FontWeight.SemiBold, fontSize = textSize)
+    }
+    Spacer(modifier = Modifier.height(10.dp))
+
+    OutlinedButton(
+        onClick = onOpenRestore,
+        enabled = !isTrackingActive,
+        modifier = pillModifier.height(buttonHeight),
+        shape = pillShape,
+        border = BorderStroke(1.5.dp, TelemetryOnSurfaceMuted),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = TelemetryOnSurfaceMuted)
+    ) {
+        Text(stringResource(R.string.restore_drive), fontWeight = FontWeight.SemiBold, fontSize = textSize)
+    }
+}
+
+@Composable
+private fun HomePortraitContent(
+    isTrackingActive: Boolean,
+    obdConnected: Boolean,
+    lastRide: Session?,
+    fuelLevelPct: Int?,
+    fuelRangeKm: Int?,
+    todayDistanceKm: Float?,
+    todayDurationLabel: String?,
+    todayAvgSpeedKmh: Int?,
+    onStartService: () -> Unit,
+    onStopService: () -> Unit,
+    onGoToPanel: () -> Unit,
+    onNavigateHistory: () -> Unit,
+    onNavigateAnalysis: () -> Unit,
+    onNavigateBikeInfo: () -> Unit,
+    onBackup: () -> Unit,
+    onOpenRestore: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(horizontal = 18.dp, vertical = 22.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.height(32.dp))
+        HomeStatusPill(obdConnected = obdConnected)
 
         Text(
             text = stringResource(R.string.main_title),
-            style = MaterialTheme.typography.headlineSmall
+            color = Color.White,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 10.dp)
         )
         Text(
-            text = "Model: LX900-A · Engine: 4M96001",
-            style = MaterialTheme.typography.labelSmall,
+            text = "LX900-A · ENGINE 4M96001",
+            color = HomeModelGrey,
+            fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
-            color = TelemetryOnSurfaceMuted
+            letterSpacing = 0.5.sp,
+            modifier = Modifier.padding(top = 5.dp)
         )
 
-        Spacer(modifier = Modifier.height(26.dp))
+        FuelHeroCard(
+            fuelLevelPct = fuelLevelPct,
+            fuelRangeKm = fuelRangeKm,
+            lastRide = lastRide,
+            ringSize = 86.dp,
+            ringStroke = 7.dp,
+            modifier = Modifier.fillMaxWidth().padding(top = 22.dp)
+        )
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            InfoCard(modifier = Modifier.weight(1f)) {
-                Text(text = stringResource(R.string.last_ride), color = TelemetryOnSurfaceMuted, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
-                Text(
-                    text = lastRide?.name ?: "—",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-                Text(
-                    text = lastRide?.let {
-                        SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault()).format(Date(it.startTime))
-                    } ?: "",
-                    color = TelemetryOnSurfaceMuted,
-                    fontSize = 10.sp,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-                Text(
-                    text = if (lastRide != null) "%.1f km".format(lastRide.totalDistanceGpsKm) else "",
-                    color = TelemetryAccent,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-            }
-            InfoCard(modifier = Modifier.weight(1f)) {
-                Text(text = stringResource(R.string.fuel), color = TelemetryOnSurfaceMuted, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
-                Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(top = 6.dp)) {
-                    Text(text = "${fuelLevelPct ?: 0}", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    Text(text = "%", color = TelemetryOnSurfaceMuted, fontSize = 11.sp, modifier = Modifier.padding(bottom = 3.dp, start = 2.dp))
-                }
-                Box(
-                    modifier = Modifier
-                        .padding(top = 8.dp)
-                        .fillMaxWidth()
-                        .height(5.dp)
-                        .background(Color(0xFF2B2B2B), RoundedCornerShape(100.dp))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth((fuelLevelPct ?: 0) / 100f)
-                            .fillMaxHeight()
-                            .background(Color(0xFFFFE600), RoundedCornerShape(100.dp))
-                    )
-                }
-            }
-            InfoCard(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = stringResource(R.string.service),
-                    color = TelemetryOnSurfaceMuted,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.5.sp,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Box(modifier = Modifier.padding(top = 4.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(
-                        progress = { ((serviceRemainingKm ?: 0) / DashboardViewModel.SERVICE_INTERVAL_KM).coerceIn(0f, 1f) },
-                        modifier = Modifier.size(60.dp),
-                        color = TelemetryAccent,
-                        trackColor = Color(0xFF2B2B2B),
-                        strokeWidth = 5.dp,
-                        strokeCap = StrokeCap.Round
-                    )
-                    Text(text = "${serviceRemainingKm ?: 0}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-                Text(text = stringResource(R.string.km_left), color = TelemetryOnSurfaceMuted, fontSize = 8.sp, modifier = Modifier.padding(top = 6.dp))
-            }
-        }
-
-        Spacer(modifier = Modifier.height(28.dp))
+        TodayRideCard(
+            distanceKm = todayDistanceKm,
+            durationLabel = todayDurationLabel,
+            avgSpeedKmh = todayAvgSpeedKmh,
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+        )
 
         Text(
             text = stringResource(R.string.quick_access),
-            color = Color(0xFF5A5A5A),
-            fontSize = 9.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 1.sp,
-            modifier = Modifier.fillMaxWidth()
+            color = HomeTextQuaternary,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.5.sp,
+            modifier = Modifier.fillMaxWidth().padding(top = 24.dp)
         )
+        HomeQuickAccessGrid(
+            onGoToPanel = onGoToPanel,
+            onNavigateHistory = onNavigateHistory,
+            onNavigateAnalysis = onNavigateAnalysis,
+            onNavigateBikeInfo = onNavigateBikeInfo,
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        HomeCtaStack(
+            isTrackingActive = isTrackingActive,
+            onStartService = onStartService,
+            onStopService = onStopService,
+            onGoToPanel = onGoToPanel,
+            onBackup = onBackup,
+            onOpenRestore = onOpenRestore,
+            pillModifier = Modifier.widthIn(max = 260.dp).fillMaxWidth(),
+            buttonHeight = 50.dp
+        )
+
         Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+    }
+}
+
+@Composable
+private fun HomeLandscapeContent(
+    isTrackingActive: Boolean,
+    obdConnected: Boolean,
+    lastRide: Session?,
+    fuelLevelPct: Int?,
+    fuelRangeKm: Int?,
+    todayDistanceKm: Float?,
+    todayDurationLabel: String?,
+    todayAvgSpeedKmh: Int?,
+    onStartService: () -> Unit,
+    onStopService: () -> Unit,
+    onGoToPanel: () -> Unit,
+    onNavigateHistory: () -> Unit,
+    onNavigateAnalysis: () -> Unit,
+    onNavigateBikeInfo: () -> Unit,
+    onBackup: () -> Unit,
+    onOpenRestore: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            HomeStatusPill(obdConnected = obdConnected, fontSize = 10.sp)
+            Text(
+                text = stringResource(R.string.main_title),
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+            Text(
+                text = "LX900-A · ENGINE 4M96001",
+                color = HomeModelGrey,
+                fontSize = 9.sp,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 0.5.sp,
+                modifier = Modifier.padding(top = 3.dp)
+            )
+
+            FuelHeroCard(
+                fuelLevelPct = fuelLevelPct,
+                fuelRangeKm = fuelRangeKm,
+                lastRide = lastRide,
+                ringSize = 52.dp,
+                ringStroke = 5.dp,
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+            )
+
+            TodayRideCard(
+                distanceKm = todayDistanceKm,
+                durationLabel = todayDurationLabel,
+                avgSpeedKmh = todayAvgSpeedKmh,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            )
+
+            Text(
+                text = stringResource(R.string.quick_access),
+                color = HomeTextQuaternary,
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.2.sp,
+                modifier = Modifier.fillMaxWidth().padding(top = 14.dp)
+            )
+            HomeQuickAccessGrid(
+                onGoToPanel = onGoToPanel,
+                onNavigateHistory = onNavigateHistory,
+                onNavigateAnalysis = onNavigateAnalysis,
+                onNavigateBikeInfo = onNavigateBikeInfo,
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+            )
+        }
+
+        Box(modifier = Modifier.fillMaxHeight().width(1.dp).background(HomeCardBorder))
+
+        Column(
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            QuickAccessButton(
-                icon = Icons.Default.Speed,
-                label = stringResource(R.string.panel),
-                onClick = onGoToPanel,
-                modifier = Modifier.weight(1f)
-            )
-            QuickAccessButton(
-                icon = Icons.Default.History,
-                label = stringResource(R.string.history),
-                onClick = onNavigateHistory,
-                modifier = Modifier.weight(1f)
-            )
-            QuickAccessButton(
-                icon = Icons.Default.QueryStats,
-                label = stringResource(R.string.analysis),
-                onClick = onNavigateAnalysis,
-                modifier = Modifier.weight(1f)
-            )
-            QuickAccessButton(
-                icon = Icons.Default.Settings,
-                label = stringResource(R.string.settings),
-                onClick = onNavigateSettings,
-                modifier = Modifier.weight(1f)
+            HomeCtaStack(
+                isTrackingActive = isTrackingActive,
+                onStartService = onStartService,
+                onStopService = onStopService,
+                onGoToPanel = onGoToPanel,
+                onBackup = onBackup,
+                onOpenRestore = onOpenRestore,
+                pillModifier = Modifier.widthIn(max = 220.dp).fillMaxWidth(),
+                buttonHeight = 44.dp
             )
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        if (isTrackingActive) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(TelemetryAccent)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = stringResource(R.string.recording_status), color = TelemetryAccent)
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        val pillShape = RoundedCornerShape(24.dp)
-        val pillModifier = Modifier.width(220.dp).height(48.dp)
-
-        Button(
-            onClick = onStartService,
-            modifier = pillModifier,
-            shape = pillShape,
-            colors = ButtonDefaults.buttonColors(containerColor = TelemetryAccent, contentColor = TelemetryOnAccent)
-        ) {
-            Text(stringResource(R.string.start_tracking), fontWeight = FontWeight.SemiBold)
-        }
-        Spacer(modifier = Modifier.height(14.dp))
-
-        Button(
-            onClick = onStopService,
-            enabled = isTrackingActive,
-            modifier = pillModifier,
-            shape = pillShape,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = TelemetrySurfaceElevated,
-                contentColor = TelemetryOnSurface,
-                disabledContainerColor = TelemetrySurfaceElevated,
-                disabledContentColor = TelemetryOnSurfaceMuted
-            )
-        ) {
-            Text(stringResource(R.string.stop), fontWeight = FontWeight.SemiBold)
-        }
-        Spacer(modifier = Modifier.height(14.dp))
-
-        if (isTrackingActive) {
-            Button(
-                onClick = onGoToPanel,
-                modifier = pillModifier,
-                shape = pillShape,
-                colors = ButtonDefaults.buttonColors(containerColor = TelemetryAccent, contentColor = TelemetryOnAccent)
-            ) {
-                Text(stringResource(R.string.go_to_panel), fontWeight = FontWeight.SemiBold)
-            }
-            Spacer(modifier = Modifier.height(14.dp))
-        }
-
-        // A REPLACE restore mid-ride deletes the session row the service is still writing to,
-        // silently losing the whole ride, so both actions are blocked while tracking is active.
-        OutlinedButton(
-            onClick = onBackup,
-            enabled = !isTrackingActive,
-            modifier = pillModifier,
-            shape = pillShape,
-            border = BorderStroke(1.5.dp, TelemetryAccent),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = TelemetryAccent)
-        ) {
-            Text(stringResource(R.string.backup_drive), fontWeight = FontWeight.SemiBold)
-        }
-        Spacer(modifier = Modifier.height(14.dp))
-
-        var showRestoreDialog by remember { mutableStateOf(false) }
-
-        OutlinedButton(
-            onClick = {
-                showRestoreDialog = true
-                onOpenRestore()
-            },
-            enabled = !isTrackingActive,
-            modifier = pillModifier,
-            shape = pillShape,
-            border = BorderStroke(1.5.dp, TelemetryOnSurfaceMuted),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = TelemetryOnSurfaceMuted)
-        ) {
-            Text(stringResource(R.string.restore_drive), fontWeight = FontWeight.SemiBold)
-        }
-
-        if (showRestoreDialog) {
-            RestoreDialog(
-                backups = driveBackups,
-                loading = driveBackupsLoading,
-                onDismiss = {
-                    showRestoreDialog = false
-                    onDismissRestore()
-                },
-                onConfirm = { fileId, mode ->
-                    showRestoreDialog = false
-                    onConfirmRestore(fileId, mode)
-                }
-            )
-        }
-
-        if (backupStatus != null) {
-            Spacer(modifier = Modifier.height(10.dp))
-            Box(
-                modifier = Modifier
-                    .background(Color(0xFF1A1A1A), RoundedCornerShape(100.dp))
-                    .border(1.dp, Color(0xFF262626), RoundedCornerShape(100.dp))
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-            ) {
-                Text(text = backupStatus, color = Color(0xFFCCCCCC), fontSize = 12.sp)
-            }
-        }
-
-        if (restoreStatus != null) {
-            Spacer(modifier = Modifier.height(10.dp))
-            Box(
-                modifier = Modifier
-                    .background(Color(0xFF1A1A1A), RoundedCornerShape(100.dp))
-                    .border(1.dp, Color(0xFF262626), RoundedCornerShape(100.dp))
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-            ) {
-                Text(text = restoreStatus, color = Color(0xFFCCCCCC), fontSize = 12.sp)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
     }
 }
 

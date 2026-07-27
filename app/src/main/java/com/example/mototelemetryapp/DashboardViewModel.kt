@@ -16,8 +16,11 @@ import com.example.mototelemetryapp.data.restoreFromBackupFile
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
+import java.util.Calendar
+import kotlin.math.roundToInt
 
 enum class LeanSource { PHONE, BIKE }
 
@@ -65,14 +68,68 @@ class DashboardViewModel : ViewModel() {
     private val _serviceRemainingKm = MutableStateFlow<Int?>(null)
     val serviceRemainingKm = _serviceRemainingKm.asStateFlow()
 
+    // Estimated range = tank capacity x current fuel level x fuel economy. Economy is derived
+    // from real ride history (distance/fuel per completed session) when there's enough of it;
+    // otherwise falls back to the manufacturer-quoted figure so the home screen doesn't have to
+    // show nothing on a fresh install.
+    private val _fuelRangeKm = MutableStateFlow<Int?>(null)
+    val fuelRangeKm = _fuelRangeKm.asStateFlow()
+
+    private val _todayDistanceKm = MutableStateFlow<Float?>(null)
+    val todayDistanceKm = _todayDistanceKm.asStateFlow()
+
+    private val _todayDurationLabel = MutableStateFlow<String?>(null)
+    val todayDurationLabel = _todayDurationLabel.asStateFlow()
+
+    private val _todayAvgSpeedKmh = MutableStateFlow<Int?>(null)
+    val todayAvgSpeedKmh = _todayAvgSpeedKmh.asStateFlow()
+
     fun fetchDashboardSummary(context: Context) {
         viewModelScope.launch {
             val dao = AppDatabase.getDatabase(context).telemetryDao()
-            _fuelLevelPct.value = dao.getLastRecord()?.fuelLevel
+            val fuelPct = dao.getLastRecord()?.fuelLevel
+            _fuelLevelPct.value = fuelPct
+
             val totalKm = dao.getTotalDistanceKm() ?: 0f
             val remaining = SERVICE_INTERVAL_KM - (totalKm % SERVICE_INTERVAL_KM)
             _serviceRemainingKm.value = remaining.toInt()
+
+            val allSessions = dao.getAllSessions().first()
+
+            val economyKmPerLiter = estimateFuelEconomyKmPerLiter(allSessions)
+            _fuelRangeKm.value = fuelPct?.let { (TANK_CAPACITY_LITERS * (it / 100f) * economyKmPerLiter).roundToInt() }
+
+            val todayStart = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            val todaySessions = allSessions.filter { it.startTime >= todayStart && it.endTime != null }
+            val todayDistance = todaySessions.sumOf { it.totalDistanceGpsKm.toDouble() }.toFloat()
+            val todayDurationMs = todaySessions.sumOf { it.endTime!! - it.startTime }
+            _todayDistanceKm.value = todayDistance
+            _todayDurationLabel.value = formatDurationLabel(todayDurationMs)
+            _todayAvgSpeedKmh.value = if (todayDurationMs > 0) {
+                (todayDistance / (todayDurationMs / 3_600_000f)).roundToInt()
+            } else 0
         }
+    }
+
+    private fun estimateFuelEconomyKmPerLiter(sessions: List<Session>): Float {
+        val usable = sessions.filter { it.totalFuelLiters > 0.5f && it.totalDistanceBikeKm > 1f }
+        return if (usable.isNotEmpty()) {
+            usable.map { it.totalDistanceBikeKm / it.totalFuelLiters }.average().toFloat()
+        } else {
+            MANUFACTURER_AVG_KM_PER_LITER
+        }
+    }
+
+    private fun formatDurationLabel(durationMs: Long): String {
+        val totalMinutes = (durationMs / 60_000L).toInt()
+        val hours = totalMinutes / 60
+        val minutes = totalMinutes % 60
+        return if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
     }
 
     fun backupToCloud(context: Context, accessToken: String) {
@@ -341,5 +398,10 @@ class DashboardViewModel : ViewModel() {
 
     companion object {
         const val SERVICE_INTERVAL_KM = 6000f
+
+        // Manufacturer spec: 17L tank, ~19 km/L rated economy (~320-350km rated range) - used
+        // as the fallback economy figure until enough real ride history exists to derive one.
+        private const val TANK_CAPACITY_LITERS = 17f
+        private const val MANUFACTURER_AVG_KM_PER_LITER = 19f
     }
 }
