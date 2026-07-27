@@ -62,20 +62,7 @@ fun DashboardScreen(
     data: TelemetryRecord?,
     leanSource: LeanSource,
     onToggleSource: () -> Unit,
-    onCalibrate: () -> Unit,
-    obdConnected: Boolean = false,
-    onFetchObdDevices: () -> List<Pair<String, String>> = { emptyList() },
-    onConnectObd: (String) -> Unit = {},
-    obdSweepRunning: Boolean = false,
-    obdSweepResults: List<ObdSweepEntry> = emptyList(),
-    obdSweepProgress: Pair<Int, Int> = 0 to 0,
-    onRunObdSweep: () -> Unit = {},
-    onCancelObdSweep: () -> Unit = {},
-    onDisconnectObd: () -> Unit = {},
-    obdConnectError: String? = null,
-    obdMilOn: Boolean = false,
-    obdDtcCodes: List<String> = emptyList(),
-    onClearObdDtcs: () -> Unit = {}
+    onCalibrate: () -> Unit
 ) {
     val currentLean = if (leanSource == LeanSource.PHONE) data?.leanAnglePhone else data?.leanAngleBike
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -91,7 +78,7 @@ fun DashboardScreen(
                 .fillMaxSize()
                 .background(backgroundBrush)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = 6.dp)
+                .padding(horizontal = 18.dp, vertical = 4.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -101,52 +88,33 @@ fun DashboardScreen(
                 LiveIndicator()
                 GpsCoordsText(data)
             }
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(3.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.align(Alignment.CenterVertically)) {
-                ObdStatusBadge(
-                    connected = obdConnected,
-                    onFetchDevices = onFetchObdDevices,
-                    onConnect = onConnectObd,
-                    sweepRunning = obdSweepRunning,
-                    sweepResults = obdSweepResults,
-                    sweepProgress = obdSweepProgress,
-                    onRunSweep = onRunObdSweep,
-                    onCancelSweep = onCancelObdSweep,
-                    onDisconnect = onDisconnectObd
-                )
-                if (obdMilOn) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    CheckEngineBadge(dtcCodes = obdDtcCodes, onClearDtcs = onClearObdDtcs)
-                }
-                if (obdConnectError != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    ObdConnectErrorPill(obdConnectError)
-                }
-                Spacer(modifier = Modifier.height(4.dp))
                 SpeedRpmCard(data, isLandscape = true)
             }
             Column(
                 modifier = Modifier.align(Alignment.CenterVertically),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                GearReadout(data, fontSize = 40.sp)
+                GearReadout(data, fontSize = 36.sp)
             }
             LeanGauge(
                 currentLean = currentLean,
                 leanSource = leanSource,
                 onToggleSource = onToggleSource,
                 onCalibrate = onCalibrate,
-                circleSize = 160.dp,
-                canvasSize = 128.dp,
+                circleSize = 144.dp,
+                canvasSize = 116.dp,
                 overlayReadout = true,
                 modifier = Modifier.align(Alignment.CenterVertically)
             )
             BarsCard(
                 data,
+                compact = true,
                 modifier = Modifier
                     .weight(1f)
                     .align(Alignment.CenterVertically)
@@ -170,46 +138,19 @@ fun DashboardScreen(
                 LiveIndicator()
                 GpsCoordsText(data)
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (obdMilOn) {
-                        CheckEngineBadge(dtcCodes = obdDtcCodes, onClearDtcs = onClearObdDtcs)
-                    }
-                    ObdStatusBadge(
-                        connected = obdConnected,
-                        onFetchDevices = onFetchObdDevices,
-                        onConnect = onConnectObd,
-                        sweepRunning = obdSweepRunning,
-                        sweepResults = obdSweepResults,
-                        sweepProgress = obdSweepProgress,
-                        onRunSweep = onRunObdSweep,
-                        onCancelSweep = onCancelObdSweep,
-                        onDisconnect = onDisconnectObd
-                    )
-                }
-            }
-            if (obdConnectError != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                ObdConnectErrorPill(obdConnectError)
-            }
             Spacer(modifier = Modifier.height(10.dp))
             SpeedGearRpmCard(data)
-            Spacer(modifier = Modifier.height(22.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             LeanGauge(
                 currentLean = currentLean,
                 leanSource = leanSource,
                 onToggleSource = onToggleSource,
                 onCalibrate = onCalibrate,
-                circleSize = 184.dp,
-                canvasSize = 150.dp,
+                circleSize = 150.dp,
+                canvasSize = 124.dp,
                 overlayReadout = false
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             BarsCard(data, modifier = Modifier.fillMaxWidth())
         }
     }
@@ -760,41 +701,41 @@ fun LeanReadoutBadge(currentLean: Float?, leanSource: LeanSource, onCalibrate: (
 }
 
 @Composable
-fun BarsCard(data: TelemetryRecord?, modifier: Modifier = Modifier) {
+fun BarsCard(data: TelemetryRecord?, compact: Boolean = false, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .background(Color(0xFF161616), RoundedCornerShape(16.dp))
             .border(1.dp, Color(0xFF232323), RoundedCornerShape(16.dp))
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(horizontal = 16.dp, vertical = if (compact) 6.dp else 10.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 8.dp)
     ) {
-        GForceBar(label = stringResource(R.string.g_force_lat), value = data?.gForceLat ?: 0f, color = TelemetryAccent)
-        GForceBar(label = stringResource(R.string.g_force_lon), value = data?.gForceLon ?: 0f, color = Color(0xFFFF9100))
+        GForceBar(label = stringResource(R.string.g_force_lat), value = data?.gForceLat ?: 0f, color = TelemetryAccent, compact = compact)
+        GForceBar(label = stringResource(R.string.g_force_lon), value = data?.gForceLon ?: 0f, color = Color(0xFFFF9100), compact = compact)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
                 .background(Color(0xFF232323))
         )
-        BarIndicator(label = stringResource(R.string.throttle), value = (data?.throttle ?: 0) / 100f, color = Color(0xFFFFE600))
-        BarIndicator(label = stringResource(R.string.brake_front), value = (data?.brakeFront ?: 0) / 100f, color = Color(0xFFFF1744))
-        BarIndicator(label = stringResource(R.string.brake_rear), value = (data?.brakeRear ?: 0) / 100f, color = Color(0xFFFF00FF))
+        BarIndicator(label = stringResource(R.string.throttle), value = (data?.throttle ?: 0) / 100f, color = Color(0xFFFFE600), compact = compact)
+        BarIndicator(label = stringResource(R.string.brake_front), value = (data?.brakeFront ?: 0) / 100f, color = Color(0xFFFF1744), compact = compact)
+        BarIndicator(label = stringResource(R.string.brake_rear), value = (data?.brakeRear ?: 0) / 100f, color = Color(0xFFFF00FF), compact = compact)
     }
 }
 
 @Composable
-fun GForceBar(label: String, value: Float, color: Color, maxG: Float = 1.2f) {
+fun GForceBar(label: String, value: Float, color: Color, maxG: Float = 1.2f, compact: Boolean = false) {
     val animatedValue by animateFloatAsState(targetValue = (abs(value) / maxG).coerceIn(0f, 1f))
     Column {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(text = label, color = TelemetryOnSurfaceMuted, fontSize = 10.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
             Text(text = "%.2f g".format(value), color = Color(0xFFCCCCCC), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
         }
-        Spacer(modifier = Modifier.height(5.dp))
+        Spacer(modifier = Modifier.height(if (compact) 3.dp else 5.dp))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(8.dp)
+                .height(if (compact) 6.dp else 8.dp)
                 .background(BarTrack, RoundedCornerShape(100.dp))
         ) {
             Box(
@@ -808,7 +749,7 @@ fun GForceBar(label: String, value: Float, color: Color, maxG: Float = 1.2f) {
 }
 
 @Composable
-fun BarIndicator(label: String, value: Float, color: Color) {
+fun BarIndicator(label: String, value: Float, color: Color, compact: Boolean = false) {
     val animatedValue by animateFloatAsState(targetValue = value.coerceIn(0f, 1f))
     val percent = (value.coerceIn(0f, 1f) * 100).toInt()
 
@@ -817,11 +758,11 @@ fun BarIndicator(label: String, value: Float, color: Color) {
             Text(text = label, color = TelemetryOnSurfaceMuted, fontSize = 9.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
             Text(text = "$percent%", color = Color(0xFFCCCCCC), fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
         }
-        Spacer(modifier = Modifier.height(5.dp))
+        Spacer(modifier = Modifier.height(if (compact) 3.dp else 5.dp))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(8.dp)
+                .height(if (compact) 6.dp else 8.dp)
                 .background(BarTrack, RoundedCornerShape(100.dp))
         ) {
             Box(

@@ -73,7 +73,10 @@ import com.example.mototelemetryapp.data.RestoreMode
 import com.example.mototelemetryapp.data.Session
 import com.example.mototelemetryapp.ui.AnalysisScreen
 import com.example.mototelemetryapp.ui.BikeInfoScreen
+import com.example.mototelemetryapp.ui.CheckEngineBadge
 import com.example.mototelemetryapp.ui.DashboardScreen
+import com.example.mototelemetryapp.ui.ObdConnectErrorPill
+import com.example.mototelemetryapp.ui.ObdStatusBadge
 import com.example.mototelemetryapp.ui.HistoryScreen
 import com.example.mototelemetryapp.ui.SettingsScreen
 import com.example.mototelemetryapp.ui.theme.MotoTelemetryAppTheme
@@ -294,43 +297,97 @@ class MainActivity : AppCompatActivity() {
                 // home button and bottom nav so the user is never stranded without navigation.
                 val showChrome = currentRoute != "dashboard" || isBound
 
+                // Hoisted here (rather than per-route) so the OBD status/check-engine/connect
+                // controls can live once in the shared header instead of being duplicated on
+                // Home, Panel, and Bike Info - the whole point being to give each of those
+                // screens back the vertical space that duplication was costing them.
+                val obdConnected by dashboardViewModel.obdConnected.collectAsState()
+                val obdMilOn by dashboardViewModel.obdMilOn.collectAsState()
+                val obdDtcCodes by dashboardViewModel.obdDtcCodes.collectAsState()
+                val obdSweepRunning by dashboardViewModel.obdSweepRunning.collectAsState()
+                val obdSweepResults by dashboardViewModel.obdSweepResults.collectAsState()
+                val obdSweepProgress by dashboardViewModel.obdSweepProgress.collectAsState()
+                val obdConnectError by dashboardViewModel.obdConnectError.collectAsState()
+
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     topBar = {
-                        TopAppBar(
-                            title = { },
-                            colors = TopAppBarDefaults.topAppBarColors(containerColor = TelemetrySurfaceElevated),
-                            navigationIcon = {
-                                if (showChrome) {
-                                    IconButton(onClick = {
+                        // A stock Material3 TopAppBar is 64dp tall, which on a landscape phone is
+                        // a fifth of the screen - it would cost the gauges more room than hoisting
+                        // the OBD controls up here saved them. So this is a hand-rolled bar sized
+                        // to its content, and tighter still in landscape where height is scarcest.
+                        val isLandscapeBar =
+                            LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+                        val barHeight = if (isLandscapeBar) 34.dp else 42.dp
+                        val barIconSize = if (isLandscapeBar) 18.dp else 20.dp
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(TelemetrySurfaceElevated)
+                                .windowInsetsPadding(WindowInsets.statusBars)
+                                .height(barHeight)
+                                .padding(horizontal = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (showChrome) {
+                                IconButton(
+                                    onClick = {
                                         dashboardViewModel.unbindService(context)
                                         navController.navigate("dashboard") {
                                             popUpTo("dashboard") { inclusive = true }
                                             launchSingleTop = true
                                         }
-                                    }) {
-                                        Icon(Icons.Default.Home, contentDescription = stringResource(R.string.main_title))
-                                    }
+                                    },
+                                    modifier = Modifier.size(barHeight)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Home,
+                                        contentDescription = stringResource(R.string.main_title),
+                                        modifier = Modifier.size(barIconSize)
+                                    )
                                 }
-                            },
-                            actions = {
-                                IconButton(onClick = {
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+                            if (obdConnectError != null) {
+                                ObdConnectErrorPill(obdConnectError!!)
+                            }
+                            Spacer(modifier = Modifier.weight(1f))
+                            if (obdMilOn) {
+                                CheckEngineBadge(dtcCodes = obdDtcCodes, onClearDtcs = { dashboardViewModel.clearObdDtcs() })
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+                            ObdStatusBadge(
+                                connected = obdConnected,
+                                onFetchDevices = { dashboardViewModel.getPairedObdDevices() },
+                                onConnect = { address -> dashboardViewModel.connectObd(context, address) },
+                                onDisconnect = { dashboardViewModel.disconnectObd() },
+                                sweepRunning = obdSweepRunning,
+                                sweepResults = obdSweepResults,
+                                sweepProgress = obdSweepProgress,
+                                onRunSweep = { dashboardViewModel.runObdSweep() },
+                                onCancelSweep = { dashboardViewModel.cancelObdSweep() }
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            IconButton(
+                                onClick = {
                                     isRotationLocked = !isRotationLocked
                                     requestedOrientation = if (isRotationLocked) {
                                         android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
                                     } else {
                                         android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                                     }
-                                }) {
-                                    Icon(
-                                        imageVector = if (isRotationLocked) Icons.Default.Lock else Icons.Default.LockOpen,
-                                        contentDescription = stringResource(
-                                            if (isRotationLocked) R.string.unlock_rotation else R.string.lock_rotation
-                                        )
-                                    )
-                                }
+                                },
+                                modifier = Modifier.size(barHeight)
+                            ) {
+                                Icon(
+                                    imageVector = if (isRotationLocked) Icons.Default.Lock else Icons.Default.LockOpen,
+                                    contentDescription = stringResource(
+                                        if (isRotationLocked) R.string.unlock_rotation else R.string.lock_rotation
+                                    ),
+                                    modifier = Modifier.size(barIconSize)
+                                )
                             }
-                        )
+                        }
                     },
                     bottomBar = bottomBar@{
                         // Matches the design: the tab bar only makes sense once on a tab screen
@@ -344,10 +401,30 @@ class MainActivity : AppCompatActivity() {
                             unselectedTextColor = TelemetryOnSurfaceMuted,
                             indicatorColor = Color.Transparent
                         )
-                        NavigationBar(containerColor = TelemetrySurfaceElevated) {
+                        // Same reasoning as the top bar: NavigationBar defaults to 80dp, which
+                        // together with the stock top bar was squeezing the telemetry screens into
+                        // a scroll. Sized down here, harder in landscape, so Panel fits on a screen.
+                        val isLandscapeNav =
+                            LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+                        val navBarHeight = if (isLandscapeNav) 42.dp else 54.dp
+                        val navIconSize = if (isLandscapeNav) 17.dp else 19.dp
+                        val navLabelSize = if (isLandscapeNav) 9.sp else 10.sp
+                        // The bar's own insets are zeroed and re-applied on the wrapper instead, so
+                        // navBarHeight sizes the tab row itself rather than the row plus the system
+                        // gesture/button inset - otherwise the height would eat into the tabs.
+                        Column(
+                            modifier = Modifier
+                                .background(TelemetrySurfaceElevated)
+                                .windowInsetsPadding(WindowInsets.navigationBars)
+                        ) {
+                        NavigationBar(
+                            containerColor = TelemetrySurfaceElevated,
+                            modifier = Modifier.height(navBarHeight),
+                            windowInsets = WindowInsets(0, 0, 0, 0)
+                        ) {
                             NavigationBarItem(
-                                icon = { Icon(Icons.Default.Speed, contentDescription = null) },
-                                label = { Text(stringResource(R.string.panel)) },
+                                icon = { Icon(Icons.Default.Speed, contentDescription = null, modifier = Modifier.size(navIconSize)) },
+                                label = { Text(stringResource(R.string.panel), fontSize = navLabelSize) },
                                 selected = currentRoute == "dashboard",
                                 onClick = {
                                     // Reachable while unbound (e.g. from History/Analysis without
@@ -359,33 +436,34 @@ class MainActivity : AppCompatActivity() {
                                 colors = navItemColors
                             )
                             NavigationBarItem(
-                                icon = { Icon(Icons.Default.History, contentDescription = null) },
-                                label = { Text(stringResource(R.string.history)) },
+                                icon = { Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(navIconSize)) },
+                                label = { Text(stringResource(R.string.history), fontSize = navLabelSize) },
                                 selected = currentRoute == "history",
                                 onClick = { navController.navigate("history") },
                                 colors = navItemColors
                             )
                             NavigationBarItem(
-                                icon = { Icon(Icons.Default.TwoWheeler, contentDescription = null) },
-                                label = { Text(stringResource(R.string.bike_info)) },
+                                icon = { Icon(Icons.Default.TwoWheeler, contentDescription = null, modifier = Modifier.size(navIconSize)) },
+                                label = { Text(stringResource(R.string.bike_info), fontSize = navLabelSize) },
                                 selected = currentRoute == "bikeinfo",
                                 onClick = { navController.navigate("bikeinfo") },
                                 colors = navItemColors
                             )
                             NavigationBarItem(
-                                icon = { Icon(Icons.Default.QueryStats, contentDescription = null) },
-                                label = { Text(stringResource(R.string.analysis)) },
+                                icon = { Icon(Icons.Default.QueryStats, contentDescription = null, modifier = Modifier.size(navIconSize)) },
+                                label = { Text(stringResource(R.string.analysis), fontSize = navLabelSize) },
                                 selected = currentRoute == "analysis",
                                 onClick = { navController.navigate("analysis") },
                                 colors = navItemColors
                             )
                             NavigationBarItem(
-                                icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                                label = { Text(stringResource(R.string.settings)) },
+                                icon = { Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(navIconSize)) },
+                                label = { Text(stringResource(R.string.settings), fontSize = navLabelSize) },
                                 selected = currentRoute == "settings",
                                 onClick = { navController.navigate("settings") },
                                 colors = navItemColors
                             )
+                        }
                         }
                     }
                 ) { innerPadding ->
@@ -398,36 +476,15 @@ class MainActivity : AppCompatActivity() {
                                     val telemetryFlow = dashboardViewModel.getTelemetryFlow()
                                     val currentData by (telemetryFlow?.collectAsState(initial = null) ?: remember { mutableStateOf(null) })
                                     val leanSource by dashboardViewModel.leanSource.collectAsState()
-                                    val obdConnected by dashboardViewModel.obdConnected.collectAsState()
-                                    val obdSweepRunning by dashboardViewModel.obdSweepRunning.collectAsState()
-                                    val obdSweepResults by dashboardViewModel.obdSweepResults.collectAsState()
-                                    val obdSweepProgress by dashboardViewModel.obdSweepProgress.collectAsState()
-                                    val obdConnectError by dashboardViewModel.obdConnectError.collectAsState()
-                                    val obdMilOn by dashboardViewModel.obdMilOn.collectAsState()
-                                    val obdDtcCodes by dashboardViewModel.obdDtcCodes.collectAsState()
 
                                     DashboardScreen(
                                         data = currentData,
                                         leanSource = leanSource,
                                         onToggleSource = { dashboardViewModel.toggleLeanSource() },
-                                        onCalibrate = { dashboardViewModel.calibrateLeanAngle() },
-                                        obdConnected = obdConnected,
-                                        onFetchObdDevices = { dashboardViewModel.getPairedObdDevices() },
-                                        onConnectObd = { address -> dashboardViewModel.connectObd(context, address) },
-                                        obdSweepRunning = obdSweepRunning,
-                                        obdSweepResults = obdSweepResults,
-                                        obdSweepProgress = obdSweepProgress,
-                                        onRunObdSweep = { dashboardViewModel.runObdSweep() },
-                                        onCancelObdSweep = { dashboardViewModel.cancelObdSweep() },
-                                        onDisconnectObd = { dashboardViewModel.disconnectObd() },
-                                        obdConnectError = obdConnectError,
-                                        obdMilOn = obdMilOn,
-                                        obdDtcCodes = obdDtcCodes,
-                                        onClearObdDtcs = { dashboardViewModel.clearObdDtcs() }
+                                        onCalibrate = { dashboardViewModel.calibrateLeanAngle() }
                                     )
                                 } else {
                                     val sessions by dashboardViewModel.sessions.collectAsState()
-                                    val obdConnected by dashboardViewModel.obdConnected.collectAsState()
                                     val fuelLevelPct by dashboardViewModel.fuelLevelPct.collectAsState()
                                     val serviceRemainingKm by dashboardViewModel.serviceRemainingKm.collectAsState()
                                     val fuelRangeKm by dashboardViewModel.fuelRangeKm.collectAsState()
@@ -440,7 +497,6 @@ class MainActivity : AppCompatActivity() {
                                     val driveBackupsLoading by dashboardViewModel.driveBackupsLoading.collectAsState()
                                     MainScreen(
                                         isTrackingActive = isTrackingActive,
-                                        obdConnected = obdConnected,
                                         lastRide = sessions.firstOrNull(),
                                         fuelLevelPct = fuelLevelPct,
                                         fuelRangeKm = fuelRangeKm,
@@ -506,21 +562,12 @@ class MainActivity : AppCompatActivity() {
                                 LaunchedEffect(Unit) {
                                     if (!isBound) dashboardViewModel.bindService(context)
                                 }
-                                val obdConnected by dashboardViewModel.obdConnected.collectAsState()
-                                val obdMilOn by dashboardViewModel.obdMilOn.collectAsState()
-                                val obdDtcCodes by dashboardViewModel.obdDtcCodes.collectAsState()
                                 val obdRawData by dashboardViewModel.obdRawData.collectAsState()
-                                val obdSweepRunning by dashboardViewModel.obdSweepRunning.collectAsState()
-                                val obdSweepResults by dashboardViewModel.obdSweepResults.collectAsState()
-                                val obdSweepProgress by dashboardViewModel.obdSweepProgress.collectAsState()
                                 val serviceRemainingKm by dashboardViewModel.serviceRemainingKm.collectAsState()
                                 LaunchedEffect(Unit) { dashboardViewModel.fetchDashboardSummary(context) }
 
                                 BikeInfoScreen(
                                     obdConnected = obdConnected,
-                                    onFetchObdDevices = { dashboardViewModel.getPairedObdDevices() },
-                                    onConnectObd = { address -> dashboardViewModel.connectObd(context, address) },
-                                    onDisconnectObd = { dashboardViewModel.disconnectObd() },
                                     odometerKm = obdRawData["ODOMETER"],
                                     serviceRemainingKm = serviceRemainingKm,
                                     coolantC = obdRawData["COOLANT"],
@@ -618,7 +665,6 @@ private val HomeToastBg = Color(0xFF1A1A1A)
 @Composable
 fun MainScreen(
     isTrackingActive: Boolean,
-    obdConnected: Boolean,
     lastRide: Session?,
     fuelLevelPct: Int?,
     fuelRangeKm: Int?,
@@ -652,7 +698,6 @@ fun MainScreen(
         if (isLandscape) {
             HomeLandscapeContent(
                 isTrackingActive = isTrackingActive,
-                obdConnected = obdConnected,
                 lastRide = lastRide,
                 fuelLevelPct = fuelLevelPct,
                 fuelRangeKm = fuelRangeKm,
@@ -672,7 +717,6 @@ fun MainScreen(
         } else {
             HomePortraitContent(
                 isTrackingActive = isTrackingActive,
-                obdConnected = obdConnected,
                 lastRide = lastRide,
                 fuelLevelPct = fuelLevelPct,
                 fuelRangeKm = fuelRangeKm,
@@ -741,25 +785,6 @@ fun MainScreen(
 }
 
 @Composable
-private fun HomeStatusPill(obdConnected: Boolean, fontSize: androidx.compose.ui.unit.TextUnit = 11.sp) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Box(
-            modifier = Modifier
-                .size(7.dp)
-                .clip(CircleShape)
-                .background(if (obdConnected) TelemetryAccent else HomeTextQuaternary)
-        )
-        Text(
-            text = stringResource(if (obdConnected) R.string.obd_connected else R.string.obd_disconnected),
-            color = if (obdConnected) TelemetryAccent else HomeTextQuaternary,
-            fontSize = fontSize,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.5.sp
-        )
-    }
-}
-
-@Composable
 private fun FuelRing(pct: Int?, ringSize: androidx.compose.ui.unit.Dp, stroke: androidx.compose.ui.unit.Dp) {
     val fraction = ((pct ?: 0).coerceIn(0, 100)) / 100f
     Box(modifier = Modifier.size(ringSize), contentAlignment = Alignment.Center) {
@@ -800,18 +825,21 @@ private fun FuelHeroCard(
     lastRide: Session?,
     ringSize: androidx.compose.ui.unit.Dp,
     ringStroke: androidx.compose.ui.unit.Dp,
+    cardPadding: androidx.compose.ui.unit.Dp = 20.dp,
+    innerSpacing: androidx.compose.ui.unit.Dp = 10.dp,
+    showLastRide: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier
             .background(Brush.linearGradient(listOf(Color(0xFF1C1C1C), Color(0xFF131313))), RoundedCornerShape(22.dp))
             .border(1.dp, HomeBorderSoft, RoundedCornerShape(22.dp))
-            .padding(20.dp),
+            .padding(cardPadding),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         FuelRing(pct = fuelLevelPct, ringSize = ringSize, stroke = ringStroke)
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(innerSpacing)) {
             Column {
                 Text(text = stringResource(R.string.fuel), color = HomeTextTertiary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 Row(verticalAlignment = Alignment.Bottom) {
@@ -826,24 +854,26 @@ private fun FuelHeroCard(
                     Text(text = stringResource(R.string.fuel_range_label), color = HomeTextTertiary, fontSize = 11.sp)
                 }
             }
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(HomeBorderSoft))
-            Column {
-                Text(text = stringResource(R.string.last_ride), color = HomeTextTertiary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                Row(modifier = Modifier.padding(top = 2.dp)) {
-                    Text(
-                        text = (lastRide?.name ?: "—") + " · ",
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = if (lastRide != null) "%.1f km".format(lastRide.totalDistanceGpsKm) else "",
-                        color = TelemetryAccent,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+            if (showLastRide) {
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(HomeBorderSoft))
+                Column {
+                    Text(text = stringResource(R.string.last_ride), color = HomeTextTertiary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Row(modifier = Modifier.padding(top = 2.dp)) {
+                        Text(
+                            text = (lastRide?.name ?: "—") + " · ",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = if (lastRide != null) "%.1f km".format(lastRide.totalDistanceGpsKm) else "",
+                            color = TelemetryAccent,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
@@ -855,16 +885,17 @@ private fun TodayRideCard(
     distanceKm: Float?,
     durationLabel: String?,
     avgSpeedKmh: Int?,
+    verticalPadding: androidx.compose.ui.unit.Dp = 14.dp,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
             .background(HomeCardBg, RoundedCornerShape(18.dp))
             .border(1.dp, HomeCardBorder, RoundedCornerShape(18.dp))
-            .padding(horizontal = 18.dp, vertical = 14.dp)
+            .padding(horizontal = 18.dp, vertical = verticalPadding)
     ) {
         Text(text = stringResource(R.string.today_ride), color = HomeTextTertiary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-        Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(text = "%.1f".format(distanceKm ?: 0f), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
@@ -894,14 +925,15 @@ private fun HomeQuickAccessGrid(
     onNavigateAnalysis: () -> Unit,
     onNavigateBikeInfo: () -> Unit,
     onNavigateSettings: () -> Unit,
+    buttonVerticalPadding: androidx.compose.ui.unit.Dp = 12.dp,
     modifier: Modifier = Modifier
 ) {
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        QuickAccessButton(icon = Icons.Default.Speed, label = stringResource(R.string.panel), onClick = onGoToPanel, modifier = Modifier.weight(1f))
-        QuickAccessButton(icon = Icons.Default.History, label = stringResource(R.string.history), onClick = onNavigateHistory, modifier = Modifier.weight(1f))
-        QuickAccessButton(icon = Icons.Default.QueryStats, label = stringResource(R.string.analysis), onClick = onNavigateAnalysis, modifier = Modifier.weight(1f))
-        QuickAccessButton(icon = Icons.Default.TwoWheeler, label = stringResource(R.string.bike_info), onClick = onNavigateBikeInfo, modifier = Modifier.weight(1f))
-        QuickAccessButton(icon = Icons.Default.Settings, label = stringResource(R.string.settings), onClick = onNavigateSettings, modifier = Modifier.weight(1f))
+        QuickAccessButton(icon = Icons.Default.Speed, label = stringResource(R.string.panel), onClick = onGoToPanel, verticalPadding = buttonVerticalPadding, modifier = Modifier.weight(1f))
+        QuickAccessButton(icon = Icons.Default.History, label = stringResource(R.string.history), onClick = onNavigateHistory, verticalPadding = buttonVerticalPadding, modifier = Modifier.weight(1f))
+        QuickAccessButton(icon = Icons.Default.QueryStats, label = stringResource(R.string.analysis), onClick = onNavigateAnalysis, verticalPadding = buttonVerticalPadding, modifier = Modifier.weight(1f))
+        QuickAccessButton(icon = Icons.Default.TwoWheeler, label = stringResource(R.string.bike_info), onClick = onNavigateBikeInfo, verticalPadding = buttonVerticalPadding, modifier = Modifier.weight(1f))
+        QuickAccessButton(icon = Icons.Default.Settings, label = stringResource(R.string.settings), onClick = onNavigateSettings, verticalPadding = buttonVerticalPadding, modifier = Modifier.weight(1f))
     }
 }
 
@@ -1000,7 +1032,6 @@ private fun HomeCtaStack(
 @Composable
 private fun HomePortraitContent(
     isTrackingActive: Boolean,
-    obdConnected: Boolean,
     lastRide: Session?,
     fuelLevelPct: Int?,
     fuelRangeKm: Int?,
@@ -1021,17 +1052,14 @@ private fun HomePortraitContent(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp, vertical = 22.dp),
+            .padding(horizontal = 18.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        HomeStatusPill(obdConnected = obdConnected)
-
         Text(
             text = stringResource(R.string.main_title),
             color = Color.White,
             fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(top = 10.dp)
+            fontWeight = FontWeight.Bold
         )
         Text(
             text = "LX900-A · ENGINE 4M96001",
@@ -1048,14 +1076,14 @@ private fun HomePortraitContent(
             lastRide = lastRide,
             ringSize = 86.dp,
             ringStroke = 7.dp,
-            modifier = Modifier.fillMaxWidth().padding(top = 22.dp)
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
         )
 
         TodayRideCard(
             distanceKm = todayDistanceKm,
             durationLabel = todayDurationLabel,
             avgSpeedKmh = todayAvgSpeedKmh,
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
         )
 
         Text(
@@ -1064,7 +1092,7 @@ private fun HomePortraitContent(
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.5.sp,
-            modifier = Modifier.fillMaxWidth().padding(top = 24.dp)
+            modifier = Modifier.fillMaxWidth().padding(top = 18.dp)
         )
         HomeQuickAccessGrid(
             onGoToPanel = onGoToPanel,
@@ -1075,7 +1103,7 @@ private fun HomePortraitContent(
             modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(18.dp))
 
         HomeCtaStack(
             isTrackingActive = isTrackingActive,
@@ -1085,17 +1113,14 @@ private fun HomePortraitContent(
             onBackup = onBackup,
             onOpenRestore = onOpenRestore,
             pillModifier = Modifier.widthIn(max = 260.dp).fillMaxWidth(),
-            buttonHeight = 50.dp
+            buttonHeight = 46.dp
         )
-
-        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 
 @Composable
 private fun HomeLandscapeContent(
     isTrackingActive: Boolean,
-    obdConnected: Boolean,
     lastRide: Session?,
     fuelLevelPct: Int?,
     fuelRangeKm: Int?,
@@ -1116,17 +1141,15 @@ private fun HomeLandscapeContent(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 16.dp),
+            .padding(horizontal = 24.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            HomeStatusPill(obdConnected = obdConnected, fontSize = 10.sp)
             Text(
                 text = stringResource(R.string.main_title),
                 color = Color.White,
                 fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 6.dp)
+                fontWeight = FontWeight.Bold
             )
             Text(
                 text = "LX900-A · ENGINE 4M96001",
@@ -1141,16 +1164,20 @@ private fun HomeLandscapeContent(
                 fuelLevelPct = fuelLevelPct,
                 fuelRangeKm = fuelRangeKm,
                 lastRide = lastRide,
-                ringSize = 52.dp,
+                ringSize = 42.dp,
                 ringStroke = 5.dp,
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+                cardPadding = 10.dp,
+                innerSpacing = 4.dp,
+                showLastRide = false,
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
             )
 
             TodayRideCard(
                 distanceKm = todayDistanceKm,
                 durationLabel = todayDurationLabel,
                 avgSpeedKmh = todayAvgSpeedKmh,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                verticalPadding = 6.dp,
+                modifier = Modifier.fillMaxWidth().padding(top = 5.dp)
             )
 
             Text(
@@ -1159,7 +1186,7 @@ private fun HomeLandscapeContent(
                 fontSize = 8.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.2.sp,
-                modifier = Modifier.fillMaxWidth().padding(top = 14.dp)
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
             )
             HomeQuickAccessGrid(
                 onGoToPanel = onGoToPanel,
@@ -1167,7 +1194,8 @@ private fun HomeLandscapeContent(
                 onNavigateAnalysis = onNavigateAnalysis,
                 onNavigateBikeInfo = onNavigateBikeInfo,
                 onNavigateSettings = onNavigateSettings,
-                modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+                buttonVerticalPadding = 6.dp,
+                modifier = Modifier.fillMaxWidth().padding(top = 5.dp)
             )
         }
 
@@ -1351,13 +1379,13 @@ fun InfoCard(
 }
 
 @Composable
-fun QuickAccessButton(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun QuickAccessButton(icon: ImageVector, label: String, onClick: () -> Unit, verticalPadding: androidx.compose.ui.unit.Dp = 12.dp, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .background(Color(0xFF161616), RoundedCornerShape(12.dp))
             .border(1.dp, Color(0xFF262626), RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
+            .padding(vertical = verticalPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {

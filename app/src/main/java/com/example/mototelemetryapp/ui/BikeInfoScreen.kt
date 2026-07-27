@@ -42,9 +42,6 @@ private const val MIN_SPEED_FOR_ECONOMY_KMH = 5
 @Composable
 fun BikeInfoScreen(
     obdConnected: Boolean,
-    onFetchObdDevices: () -> List<Pair<String, String>>,
-    onConnectObd: (String) -> Unit,
-    onDisconnectObd: () -> Unit = {},
     odometerKm: Int?,
     serviceRemainingKm: Int?,
     coolantC: Int?,
@@ -67,29 +64,12 @@ fun BikeInfoScreen(
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = stringResource(R.string.bike_info),
-                color = Color.White,
-                fontSize = 21.sp,
-                fontWeight = FontWeight.Bold
-            )
-            ObdStatusBadge(
-                connected = obdConnected,
-                onFetchDevices = onFetchObdDevices,
-                onConnect = onConnectObd,
-                onDisconnect = onDisconnectObd,
-                sweepRunning = obdSweepRunning,
-                sweepResults = obdSweepResults,
-                sweepProgress = obdSweepProgress,
-                onRunSweep = onRunObdSweep,
-                onCancelSweep = onCancelObdSweep
-            )
-        }
+        Text(
+            text = stringResource(R.string.bike_info),
+            color = Color.White,
+            fontSize = 21.sp,
+            fontWeight = FontWeight.Bold
+        )
 
         Column(
             modifier = Modifier
