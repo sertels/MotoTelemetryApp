@@ -1,13 +1,16 @@
 package com.example.mototelemetryapp.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -18,8 +21,10 @@ import com.example.mototelemetryapp.data.TelemetryRecord
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
+import com.google.maps.android.compose.rememberUpdatedMarkerState
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -54,9 +59,27 @@ fun HistoryScreen(records: List<TelemetryRecord>) {
             if (points.isNotEmpty()) {
                 Polyline(
                     points = points,
-                    color = Color.Red,
+                    color = Color(0xFFFF1744),
                     width = 10f
                 )
+                MarkerComposable(state = rememberUpdatedMarkerState(position = points.first())) {
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF00B4FF))
+                            .border(2.dp, Color(0xFF121212), CircleShape)
+                    )
+                }
+                MarkerComposable(state = rememberUpdatedMarkerState(position = points.last())) {
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                            .border(2.dp, Color(0xFF121212), CircleShape)
+                    )
+                }
             }
         }
 
@@ -67,6 +90,7 @@ fun HistoryScreen(records: List<TelemetryRecord>) {
                     .padding(14.dp)
                     .fillMaxWidth()
                     .background(Color(0xCC121212), RoundedCornerShape(12.dp))
+                    .border(1.dp, Color(0xFF2A2A2A), RoundedCornerShape(12.dp))
                     .padding(vertical = 10.dp, horizontal = 14.dp),
                 horizontalArrangement = Arrangement.SpaceAround
             ) {
