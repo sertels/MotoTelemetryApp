@@ -157,7 +157,12 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
                 "FUEL_LEVEL" to fuelLevelPct.roundToInt(),
                 // Scaled x10 (141 = 14.1V) - the map is Int-valued, and 0.1V is finer than any
                 // reading off a bike's electrical system is worth trusting anyway.
-                "BATTERY" to (batteryVoltsFor(rpm, frame.brakeFrontPct + frame.brakeRearPct) * 10).roundToInt()
+                "BATTERY" to (batteryVoltsFor(rpm, frame.brakeFrontPct + frame.brakeRearPct) * 10).roundToInt(),
+                // Distance to the next service, counted off the simulated ECU odometer. The app's
+                // own estimate is derived from recorded ride history instead, which reads 6,000 km
+                // on a fresh install and never moves - this gives the card a number that responds
+                // to the bike being ridden, and starts mid-interval rather than suspiciously round.
+                "SERVICE_REMAINING" to serviceRemainingKmFor(odometerKm)
             )
 
             // Raise a fault partway through so the check-engine badge and the Clear DTCs flow are
@@ -199,6 +204,14 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
 
     private fun fuelRateFor(speedKmh: Float, throttlePct: Float): Float =
         (0.8f + throttlePct * 0.09f + speedKmh * 0.012f).coerceIn(0.6f, 22f)
+
+    // Km until the next service, assuming servicing happens every SERVICE_INTERVAL_KM exactly -
+    // the same assumption the app's history-based estimate makes, just measured against the ECU
+    // odometer instead of recorded rides.
+    private fun serviceRemainingKmFor(odometer: Float): Int {
+        val interval = DashboardViewModel.SERVICE_INTERVAL_KM
+        return (interval - (odometer % interval)).roundToInt()
+    }
 
     // Resting battery voltage at idle, climbing to regulated charging voltage as the alternator
     // spins up, and sagging slightly under brake-light load. Modelled rather than scripted so it

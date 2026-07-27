@@ -571,7 +571,10 @@ class MainActivity : AppCompatActivity() {
                                 BikeInfoScreen(
                                     obdConnected = obdConnected,
                                     odometerKm = obdRawData["ODOMETER"],
-                                    serviceRemainingKm = serviceRemainingKm,
+                                    // Prefer a figure the ECU reports over the app's own estimate
+                                    // from ride history, which can only ever count rides this
+                                    // phone recorded. Only the simulator supplies one today.
+                                    serviceRemainingKm = obdRawData["SERVICE_REMAINING"] ?: serviceRemainingKm,
                                     coolantC = obdRawData["COOLANT"],
                                     fuelLevelPct = obdRawData["FUEL_LEVEL"],
                                     fuelRateLph = obdRawData["FUEL_RATE"]?.let { it / 100f },
