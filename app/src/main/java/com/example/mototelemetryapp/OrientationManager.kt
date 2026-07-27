@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlin.math.abs
 
-class OrientationManager(context: Context) : SensorEventListener {
+class OrientationManager(context: Context) : SensorEventListener, OrientationSource {
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
@@ -32,15 +32,15 @@ class OrientationManager(context: Context) : SensorEventListener {
     private var rollOffset = prefs.getFloat(KEY_ROLL_OFFSET, 0f)
 
     private val _leanAngle = MutableStateFlow(0f)
-    val leanAngle = _leanAngle.asStateFlow()
+    override val leanAngle = _leanAngle.asStateFlow()
 
     private val _gForceLat = MutableStateFlow(0f)
-    val gForceLat = _gForceLat.asStateFlow()
+    override val gForceLat = _gForceLat.asStateFlow()
 
     private val _gForceLon = MutableStateFlow(0f)
-    val gForceLon = _gForceLon.asStateFlow()
+    override val gForceLon = _gForceLon.asStateFlow()
 
-    fun start() {
+    override fun start() {
         rotationSensor?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
         }
@@ -49,12 +49,12 @@ class OrientationManager(context: Context) : SensorEventListener {
         }
     }
 
-    fun stop() {
+    override fun stop() {
         sensorManager.unregisterListener(this)
     }
 
     // Zeroes the lean angle to the phone's current mount tilt; persists across restarts.
-    fun calibrate() {
+    override fun calibrate() {
         rollOffset = rawRoll
         prefs.edit().putFloat(KEY_ROLL_OFFSET, rollOffset).apply()
     }

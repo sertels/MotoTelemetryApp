@@ -130,7 +130,7 @@ fun SettingsScreen(
         }
 
         // Debug builds only (see BuildConfig.DEBUG at the call site) - the simulator is hard-gated
-        // in isObdSimulationEnabled() too, so a release build ignores the stored value regardless.
+        // in isRideSimulationEnabled() too, so a release build ignores the stored value regardless.
         if (showDebugSection) {
             Spacer(modifier = Modifier.height(28.dp))
             SettingsSectionLabel(stringResource(R.string.settings_section_debug))

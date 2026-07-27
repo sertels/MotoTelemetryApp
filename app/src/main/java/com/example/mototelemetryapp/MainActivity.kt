@@ -609,10 +609,10 @@ class MainActivity : AppCompatActivity() {
                                     mutableStateOf(appPrefs.getInt(KEY_RIDE_GRACE_PERIOD_MINUTES, DEFAULT_RIDE_GRACE_PERIOD_MINUTES))
                                 }
                                 val currentLocaleTag = AppCompatDelegate.getApplicationLocales()[0]?.language ?: "en"
-                                // Seeded from isObdSimulationEnabled() rather than the raw pref so the
+                                // Seeded from isRideSimulationEnabled() rather than the raw pref so the
                                 // switch shows the value actually in force - including the
                                 // no-adapter default that applies before anything has been stored.
-                                var simulateObd by remember { mutableStateOf(isObdSimulationEnabled(context)) }
+                                var simulateObd by remember { mutableStateOf(isRideSimulationEnabled(context)) }
 
                                 SettingsScreen(
                                     autoStartOnObdConnect = autoStartOnObdConnect,

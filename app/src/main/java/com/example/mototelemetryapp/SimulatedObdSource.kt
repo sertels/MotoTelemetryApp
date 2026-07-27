@@ -11,7 +11,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
-// A stand-in for a real ELM327 adapter that plays back a scripted ride.
+// A stand-in for a real ELM327 adapter, reading its values from the shared SimulatedRide.
 //
 // This fakes the *data*, not the transport: it produces the same PID map pollOnce() would, at the
 // same cadence, so every consumer above it (TelemetryService, the ViewModel, every screen) runs
@@ -129,8 +129,8 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
     private suspend fun runRideLoop() {
         val startedAt = System.currentTimeMillis()
         while (_isConnected.value) {
-            val elapsedSec = (System.currentTimeMillis() - startedAt) / 1000f
-            val frame = interpolateRide(elapsedSec % RIDE_LOOP_SECONDS)
+            val connectedForSec = (System.currentTimeMillis() - startedAt) / 1000f
+            val frame = SimulatedRide.frameNow()
 
             // Distance/fuel integrate over real elapsed time so the odometer and fuel gauge drift
             // the way they would on a ride, rather than being pinned to the loop position.
@@ -150,7 +150,7 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
                 "BRAKE_FRONT" to frame.brakeFrontPct.roundToInt(),
                 "BRAKE_REAR" to frame.brakeRearPct.roundToInt(),
                 "LEAN_BIKE" to frame.leanDeg.roundToInt(),
-                "COOLANT" to coolantFor(elapsedSec),
+                "COOLANT" to coolantFor(connectedForSec),
                 "ODOMETER" to odometerKm.roundToInt(),
                 "FUEL_RATE" to (fuelRateLh * 100).roundToInt(), // scaled x100, as pollOnce() does
                 "FUEL_LEVEL" to fuelLevelPct.roundToInt()
@@ -158,7 +158,7 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
 
             // Raise a fault partway through so the check-engine badge and the Clear DTCs flow are
             // reachable without a real ECU - unless the user has already cleared it this run.
-            if (!dtcsClearedThisRun && elapsedSec > MIL_ONSET_SECONDS && !_milOn.value) {
+            if (!dtcsClearedThisRun && connectedForSec > MIL_ONSET_SECONDS && !_milOn.value) {
                 _milOn.value = true
                 _dtcCodes.value = SIMULATED_DTCS
             }
@@ -166,25 +166,6 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
             delay(TICK_MS.milliseconds)
         }
     }
-
-    private fun interpolateRide(t: Float): RideFrame {
-        val next = RIDE_SCRIPT.indexOfFirst { it.atSeconds > t }.let { if (it == -1) RIDE_SCRIPT.lastIndex else it }
-        val prev = (next - 1).coerceAtLeast(0)
-        val from = RIDE_SCRIPT[prev]
-        val to = RIDE_SCRIPT[next]
-        val span = (to.atSeconds - from.atSeconds).takeIf { it > 0f } ?: return from
-        val f = ((t - from.atSeconds) / span).coerceIn(0f, 1f)
-        return RideFrame(
-            atSeconds = t,
-            speedKmh = lerp(from.speedKmh, to.speedKmh, f),
-            throttlePct = lerp(from.throttlePct, to.throttlePct, f),
-            brakeFrontPct = lerp(from.brakeFrontPct, to.brakeFrontPct, f),
-            brakeRearPct = lerp(from.brakeRearPct, to.brakeRearPct, f),
-            leanDeg = lerp(from.leanDeg, to.leanDeg, f)
-        )
-    }
-
-    private fun lerp(a: Float, b: Float, f: Float) = a + (b - a) * f
 
     // Neutral below walking pace, then roughly the shift points of a 900cc twin.
     private fun gearFor(speedKmh: Float): Int = when {
@@ -215,15 +196,6 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
     private fun fuelRateFor(speedKmh: Float, throttlePct: Float): Float =
         (0.8f + throttlePct * 0.09f + speedKmh * 0.012f).coerceIn(0.6f, 22f)
 
-    private data class RideFrame(
-        val atSeconds: Float,
-        val speedKmh: Float,
-        val throttlePct: Float,
-        val brakeFrontPct: Float,
-        val brakeRearPct: Float,
-        val leanDeg: Float
-    )
-
     companion object {
         const val SIMULATED_DEVICE_NAME = "Simulated OBD (no bike)"
         const val SIMULATED_DEVICE_ADDRESS = "00:00:00:00:00:00"
@@ -241,28 +213,9 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
         private const val START_FUEL_LEVEL_PCT = 78f
         private const val TANK_LITERS = 16.5f
         private const val MIL_ONSET_SECONDS = 45f
-        private const val RIDE_LOOP_SECONDS = 60f
-
         // Oxygen-sensor and lean-mixture codes: common, harmless-looking, and clearly synthetic
         // enough that nobody mistakes them for a real diagnosis of this bike.
         private val SIMULATED_DTCS = listOf("P0133", "P0171")
 
-        // One minute of riding: pull away, work up through the gears, brake into a left-hander,
-        // pick it up, then a faster right, then back down to a stop. Interpolated between points,
-        // so keep them coarse - this is meant to look plausible, not to be a real telemetry trace.
-        private val RIDE_SCRIPT = listOf(
-            RideFrame(0f, 0f, 0f, 0f, 0f, 0f),
-            RideFrame(4f, 0f, 0f, 0f, 0f, 0f),
-            RideFrame(10f, 60f, 65f, 0f, 0f, 0f),
-            RideFrame(16f, 95f, 55f, 0f, 0f, -5f),
-            RideFrame(22f, 70f, 10f, 35f, 20f, -32f),
-            RideFrame(28f, 55f, 25f, 0f, 0f, -42f),
-            RideFrame(34f, 80f, 60f, 0f, 0f, -10f),
-            RideFrame(40f, 104f, 45f, 0f, 0f, 8f),
-            RideFrame(46f, 65f, 5f, 45f, 25f, 30f),
-            RideFrame(52f, 50f, 30f, 0f, 0f, 38f),
-            RideFrame(58f, 20f, 0f, 30f, 15f, 5f),
-            RideFrame(60f, 0f, 0f, 0f, 0f, 0f)
-        )
     }
 }

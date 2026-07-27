@@ -47,7 +47,8 @@ interface ObdSource {
     )
 }
 
-// Whether the simulated source should be used instead of real Bluetooth.
+// Whether the simulated sources should be used instead of the real Bluetooth adapter and
+// phone sensors. Governs both, so the two halves of a telemetry record can never disagree.
 //
 // Hard-gated on BuildConfig.DEBUG: a release build always talks to the real bike, whatever is
 // left in prefs, so a stale toggle can never show a rider invented telemetry.
@@ -56,7 +57,7 @@ interface ObdSource {
 // yet it defaults to on when there's nothing an OBD adapter could be reached through. That
 // default is deliberately only a default - it stays overridable in both directions, which
 // auto-detection alone would not allow.
-fun isObdSimulationEnabled(context: Context): Boolean {
+fun isRideSimulationEnabled(context: Context): Boolean {
     if (!BuildConfig.DEBUG) return false
     val prefs = context.getSharedPreferences(APP_PREFS_NAME, Context.MODE_PRIVATE)
     if (prefs.contains(KEY_SIMULATE_OBD)) return prefs.getBoolean(KEY_SIMULATE_OBD, false)

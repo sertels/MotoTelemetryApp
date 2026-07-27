@@ -44,7 +44,7 @@ class TelemetryService : Service() {
     // Either the real Bluetooth adapter or the debug simulator - chosen once in onCreate() so
     // everything downstream is unaware of which one it got.
     private var bluetoothOBDManager: ObdSource? = null
-    private var orientationManager: OrientationManager? = null
+    private var orientationManager: OrientationSource? = null
     private var db: AppDatabase? = null
     private var fusedLocationClient: FusedLocationProviderClient? = null
     
@@ -126,13 +126,23 @@ class TelemetryService : Service() {
         createNotificationChannel()
 
         // Initialize components
-        bluetoothOBDManager = if (isObdSimulationEnabled(this)) {
-            Log.w("TelemetryService", "OBD simulation enabled - telemetry below is synthetic.")
+        // One switch drives both halves: simulating the bike's PIDs but reading real (dead, on an
+        // emulator) phone sensors would give a dashboard cornering at 40 degrees while both G bars
+        // sit at zero. See SimulatedRide, which keeps the two consistent.
+        val simulate = isRideSimulationEnabled(this)
+        if (simulate) {
+            Log.w("TelemetryService", "Ride simulation enabled - telemetry below is synthetic.")
+        }
+        bluetoothOBDManager = if (simulate) {
             SimulatedObdSource(serviceScope)
         } else {
             BluetoothOBDManager(this, serviceScope)
         }
-        orientationManager = OrientationManager(this)
+        orientationManager = if (simulate) {
+            SimulatedOrientationSource(serviceScope)
+        } else {
+            OrientationManager(this)
+        }
         db = AppDatabase.getDatabase(this)
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
