@@ -141,9 +141,10 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
             if (fuelLevelPct < 5f) fuelLevelPct = START_FUEL_LEVEL_PCT
 
             val gear = gearFor(speedKmh)
+            val rpm = rpmFor(speedKmh, gear, frame.throttlePct)
 
             _obdData.value = mapOf(
-                "RPM" to rpmFor(speedKmh, gear, frame.throttlePct),
+                "RPM" to rpm,
                 "SPEED" to speedKmh.roundToInt(),
                 "GEAR" to gear,
                 "THROTTLE" to frame.throttlePct.roundToInt(),
@@ -153,7 +154,10 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
                 "COOLANT" to coolantFor(connectedForSec),
                 "ODOMETER" to odometerKm.roundToInt(),
                 "FUEL_RATE" to (fuelRateLh * 100).roundToInt(), // scaled x100, as pollOnce() does
-                "FUEL_LEVEL" to fuelLevelPct.roundToInt()
+                "FUEL_LEVEL" to fuelLevelPct.roundToInt(),
+                // Scaled x10 (141 = 14.1V) - the map is Int-valued, and 0.1V is finer than any
+                // reading off a bike's electrical system is worth trusting anyway.
+                "BATTERY" to (batteryVoltsFor(rpm, frame.brakeFrontPct + frame.brakeRearPct) * 10).roundToInt()
             )
 
             // Raise a fault partway through so the check-engine badge and the Clear DTCs flow are
@@ -196,6 +200,15 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
     private fun fuelRateFor(speedKmh: Float, throttlePct: Float): Float =
         (0.8f + throttlePct * 0.09f + speedKmh * 0.012f).coerceIn(0.6f, 22f)
 
+    // Resting battery voltage at idle, climbing to regulated charging voltage as the alternator
+    // spins up, and sagging slightly under brake-light load. Modelled rather than scripted so it
+    // tracks the rpm the rest of the dashboard is showing.
+    private fun batteryVoltsFor(rpm: Int, brakeLoadPct: Float): Float {
+        val charging = ((rpm - IDLE_RPM) / CHARGING_RAMP_RPM).coerceIn(0f, 1f)
+        val base = RESTING_VOLTS + (CHARGING_VOLTS - RESTING_VOLTS) * charging
+        return base - (brakeLoadPct * BRAKE_LOAD_VOLTS_PER_PCT)
+    }
+
     companion object {
         const val SIMULATED_DEVICE_NAME = "Simulated OBD (no bike)"
         const val SIMULATED_DEVICE_ADDRESS = "00:00:00:00:00:00"
@@ -209,6 +222,10 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
         private const val COLD_COOLANT_C = 24f
         private const val RUNNING_COOLANT_C = 88f
         private const val WARMUP_SECONDS = 120f
+        private const val RESTING_VOLTS = 12.6f
+        private const val CHARGING_VOLTS = 14.2f
+        private const val CHARGING_RAMP_RPM = 900f // rpm above idle for the alternator to reach full output
+        private const val BRAKE_LOAD_VOLTS_PER_PCT = 0.004f
         private const val START_ODOMETER_KM = 24_580f
         private const val START_FUEL_LEVEL_PCT = 78f
         private const val TANK_LITERS = 16.5f

@@ -576,6 +576,7 @@ class MainActivity : AppCompatActivity() {
                                     fuelLevelPct = obdRawData["FUEL_LEVEL"],
                                     fuelRateLph = obdRawData["FUEL_RATE"]?.let { it / 100f },
                                     speedKmh = obdRawData["SPEED"],
+                                    batteryVolts = obdRawData["BATTERY"]?.let { it / 10f },
                                     obdMilOn = obdMilOn,
                                     obdDtcCodes = obdDtcCodes,
                                     onClearObdDtcs = { dashboardViewModel.clearObdDtcs() },

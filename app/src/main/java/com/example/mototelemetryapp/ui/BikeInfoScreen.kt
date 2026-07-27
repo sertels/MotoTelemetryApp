@@ -48,6 +48,7 @@ fun BikeInfoScreen(
     fuelLevelPct: Int?,
     fuelRateLph: Float?,
     speedKmh: Int?,
+    batteryVolts: Float?,
     obdMilOn: Boolean,
     obdDtcCodes: List<String>,
     onClearObdDtcs: () -> Unit,
@@ -147,7 +148,9 @@ fun BikeInfoScreen(
                 )
                 StatCard(
                     label = stringResource(R.string.bike_info_battery),
-                    value = "--",
+                    // Still "--" on a real bike: no battery-voltage PID has been confirmed on this
+                    // ECU yet (that's what the sweep below is for). Only the simulator fills it.
+                    value = batteryVolts?.let { "%.1f".format(it) } ?: "--",
                     unit = "V",
                     modifier = Modifier.weight(1f)
                 )
