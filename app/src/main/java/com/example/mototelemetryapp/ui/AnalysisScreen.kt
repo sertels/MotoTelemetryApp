@@ -267,7 +267,11 @@ fun SessionDetailView(records: List<TelemetryRecord>) {
                     bottomAxis = rememberBottomAxis(),
                 ),
                 modelProducer = modelProducer,
-                modifier = Modifier.fillMaxWidth().height(200.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .background(Color(0xFF1A1A1A), RoundedCornerShape(8.dp))
+                    .padding(8.dp)
             )
         }
     }
