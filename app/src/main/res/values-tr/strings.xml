@@ -110,4 +110,5 @@
     <string name="bike_info_check_engine_count">MOTOR ARIZASI · %1$d kod</string>
     <string name="bike_info_sweep_title">Daha fazla sinyal ara</string>
     <string name="bike_info_sweep_hint">Akü voltajı, emme sıcaklığı, ABS arızaları — henüz eşlenmedi</string>
+    <string name="g_force">G-KUVVETİ</string>
 </resources>

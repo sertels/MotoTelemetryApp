@@ -23,16 +23,20 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -43,6 +47,9 @@ import com.example.mototelemetryapp.R
 import com.example.mototelemetryapp.data.TelemetryRecord
 import com.example.mototelemetryapp.ui.theme.TelemetryAccent
 import com.example.mototelemetryapp.ui.theme.TelemetryOnSurfaceMuted
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 
 private val CardBorder = Color(0xFF262626)
 private val CardGradient = Brush.verticalGradient(listOf(Color(0xFF1C1C1C), Color(0xFF161616)))
@@ -78,13 +85,26 @@ fun DashboardScreen(
     )
 
     if (isLandscape) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(backgroundBrush)
-                .padding(horizontal = 18.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 6.dp)
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LiveIndicator()
+                GpsCoordsText(data)
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.align(Alignment.CenterVertically)) {
                 ObdStatusBadge(
                     connected = obdConnected,
@@ -102,25 +122,25 @@ fun DashboardScreen(
                     CheckEngineBadge(dtcCodes = obdDtcCodes, onClearDtcs = onClearObdDtcs)
                 }
                 if (obdConnectError != null) {
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     ObdConnectErrorPill(obdConnectError)
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 SpeedRpmCard(data, isLandscape = true)
             }
             Column(
                 modifier = Modifier.align(Alignment.CenterVertically),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                GearReadout(data, fontSize = 44.sp)
+                GearReadout(data, fontSize = 40.sp)
             }
             LeanGauge(
                 currentLean = currentLean,
                 leanSource = leanSource,
                 onToggleSource = onToggleSource,
                 onCalibrate = onCalibrate,
-                circleSize = 190.dp,
-                canvasSize = 150.dp,
+                circleSize = 160.dp,
+                canvasSize = 128.dp,
                 overlayReadout = true,
                 modifier = Modifier.align(Alignment.CenterVertically)
             )
@@ -130,6 +150,7 @@ fun DashboardScreen(
                     .weight(1f)
                     .align(Alignment.CenterVertically)
             )
+            }
         }
     } else {
         Column(
@@ -146,6 +167,14 @@ fun DashboardScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 LiveIndicator()
+                GpsCoordsText(data)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (obdMilOn) {
                         CheckEngineBadge(dtcCodes = obdDtcCodes, onClearDtcs = onClearObdDtcs)
@@ -196,6 +225,21 @@ fun ObdConnectErrorPill(message: String, modifier: Modifier = Modifier) {
     ) {
         Text(text = message, color = Color(0xFFFF8A80), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
     }
+}
+
+@Composable
+fun GpsCoordsText(data: TelemetryRecord?, modifier: Modifier = Modifier) {
+    val text = if (data != null && (data.latitude != 0.0 || data.longitude != 0.0)) {
+        "%.4f, %.4f".format(data.latitude, data.longitude)
+    } else "--"
+    Text(
+        text = text,
+        color = TelemetryOnSurfaceMuted,
+        fontSize = 10.sp,
+        fontFamily = FontFamily.Monospace,
+        letterSpacing = 0.3.sp,
+        modifier = modifier
+    )
 }
 
 @Composable
@@ -527,14 +571,14 @@ fun SpeedRpmCard(data: TelemetryRecord?, isLandscape: Boolean, modifier: Modifie
         modifier = modifier
             .background(CardGradient, RoundedCornerShape(16.dp))
             .border(1.dp, CardBorder, RoundedCornerShape(16.dp))
-            .padding(horizontal = 18.dp, vertical = 10.dp)
+            .padding(horizontal = 18.dp, vertical = 6.dp)
             .widthIn(min = 120.dp)
     ) {
         Text(text = stringResource(R.string.speed), color = TelemetryOnSurfaceMuted, fontSize = 10.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
-        Text(text = "${data?.speed ?: 0}", color = Color.White, fontSize = 44.sp, fontWeight = FontWeight.Bold)
-        Text(text = stringResource(R.string.unit_kmh), color = TelemetryOnSurfaceMuted, fontSize = 11.sp, modifier = Modifier.padding(bottom = 8.dp))
+        Text(text = "${data?.speed ?: 0}", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Bold)
+        Text(text = stringResource(R.string.unit_kmh), color = TelemetryOnSurfaceMuted, fontSize = 11.sp, modifier = Modifier.padding(bottom = 4.dp))
         Text(text = stringResource(R.string.rpm), color = TelemetryOnSurfaceMuted, fontSize = 10.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
-        Text(text = "${data?.rpm ?: 0}", color = TelemetryAccent, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text(text = "${data?.rpm ?: 0}", color = TelemetryAccent, fontSize = 20.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -572,6 +616,10 @@ fun LeanGauge(
     overlayReadout: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val lean = (currentLean ?: 0f).coerceIn(-60f, 60f)
+    val tickAngles = (-60..60 step 10).toList()
+    val labelAngles = listOf(-60, -30, 0, 30, 60)
+
     Box(
         modifier = modifier
             .size(circleSize)
@@ -581,33 +629,69 @@ fun LeanGauge(
             .clickable { onToggleSource() },
         contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .size(canvasSize)
-                .rotate(currentLean ?: 0f)
-        ) {
+        Box(modifier = Modifier.size(canvasSize)) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                drawArc(
-                    color = Color(0xFF3A3A3A),
-                    startAngle = 160f,
-                    sweepAngle = 220f,
-                    useCenter = false,
-                    style = Stroke(
-                        width = 2.dp.toPx(),
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 6.dp.toPx()))
+                val radius = size.minDimension / 2f
+                val tickOuter = radius * 0.98f
+                val tickInnerMinor = radius * 0.86f
+                val tickInnerMajor = radius * 0.80f
+
+                drawCircle(color = Color(0xFF262626), radius = radius * 0.92f, style = Stroke(width = 1.5.dp.toPx()))
+
+                tickAngles.forEach { angleDeg ->
+                    val isMajor = angleDeg % 30 == 0
+                    val isLimit = angleDeg == -60 || angleDeg == 60
+                    val rad = Math.toRadians((-90 + angleDeg).toDouble())
+                    val cosA = cos(rad).toFloat()
+                    val sinA = sin(rad).toFloat()
+                    val innerR = if (isMajor) tickInnerMajor else tickInnerMinor
+                    drawLine(
+                        color = if (isLimit) Color(0xFFFF1744) else if (isMajor) Color(0xFFAAAAAA) else Color(0xFF444444),
+                        start = Offset(center.x + innerR * cosA, center.y + innerR * sinA),
+                        end = Offset(center.x + tickOuter * cosA, center.y + tickOuter * sinA),
+                        strokeWidth = if (isMajor) 2.5.dp.toPx() else 1.5.dp.toPx(),
+                        cap = StrokeCap.Round
                     )
+                }
+
+                if (abs(lean) > 0.5f) {
+                    drawArc(
+                        color = Color(0xFF00B4FF),
+                        startAngle = -90f,
+                        sweepAngle = lean,
+                        useCenter = false,
+                        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round),
+                        topLeft = Offset(center.x - tickInnerMajor, center.y - tickInnerMajor),
+                        size = Size(tickInnerMajor * 2, tickInnerMajor * 2)
+                    )
+                }
+            }
+            labelAngles.forEach { angleDeg ->
+                val rad = Math.toRadians((-90 + angleDeg).toDouble())
+                val bx = (cos(rad) * 0.62).toFloat()
+                val by = (sin(rad) * 0.62).toFloat()
+                Text(
+                    text = "${abs(angleDeg)}",
+                    color = Color(0xFF8A8A8A),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(BiasAlignment(bx, by))
                 )
-                drawCircle(
-                    color = Color(0xFF2A2A2A),
-                    style = Stroke(width = 3.dp.toPx())
-                )
-                drawLine(
-                    color = Color(0xFFFF1744),
-                    start = center.copy(y = center.y - size.height * 0.38f),
-                    end = center.copy(y = center.y + size.height * 0.38f),
-                    strokeWidth = 7.dp.toPx()
-                )
-                drawCircle(color = Color(0xFFE8E8E8), radius = 5.dp.toPx())
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .rotate(lean)
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    drawLine(
+                        color = Color(0xFFFF1744),
+                        start = center.copy(y = center.y - size.height * 0.38f),
+                        end = center.copy(y = center.y + size.height * 0.38f),
+                        strokeWidth = 7.dp.toPx()
+                    )
+                    drawCircle(color = Color(0xFFE8E8E8), radius = 5.dp.toPx())
+                }
             }
         }
         Icon(
@@ -674,12 +758,48 @@ fun BarsCard(data: TelemetryRecord?, modifier: Modifier = Modifier) {
         modifier = modifier
             .background(Color(0xFF161616), RoundedCornerShape(16.dp))
             .border(1.dp, Color(0xFF232323), RoundedCornerShape(16.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        GForceBar(label = stringResource(R.string.g_force), value = data?.gForce ?: 0f)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Color(0xFF232323))
+        )
         BarIndicator(label = stringResource(R.string.throttle), value = (data?.throttle ?: 0) / 100f, color = Color(0xFFFFE600))
         BarIndicator(label = stringResource(R.string.brake_front), value = (data?.brakeFront ?: 0) / 100f, color = Color(0xFFFF1744))
         BarIndicator(label = stringResource(R.string.brake_rear), value = (data?.brakeRear ?: 0) / 100f, color = Color(0xFFFF00FF))
+    }
+}
+
+@Composable
+fun GForceBar(label: String, value: Float, maxG: Float = 1.2f, segments: Int = 9) {
+    val litCount = ((abs(value) / maxG).coerceIn(0f, 1f) * segments).toInt()
+    Column {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(text = label, color = TelemetryOnSurfaceMuted, fontSize = 10.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
+            Text(text = "%.2f g".format(value), color = Color(0xFFCCCCCC), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(modifier = Modifier.height(5.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            repeat(segments) { i ->
+                val lit = i < litCount
+                val color = when {
+                    !lit -> Color(0xFF2B2B2B)
+                    i >= 7 -> Color(0xFFFF1744)
+                    i >= 5 -> Color(0xFFFFE600)
+                    else -> Color(0xFF00E676)
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(8.dp)
+                        .background(color, RoundedCornerShape(2.dp))
+                )
+            }
+        }
     }
 }
 
