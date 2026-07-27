@@ -56,6 +56,10 @@
     <string name="chart_error">Error loading chart data</string>
     <string name="obd_connected">OBD Connected</string>
     <string name="obd_disconnected">OBD Disconnected</string>
+    <string name="obd_simulated">OBD Simulated</string>
+    <string name="simulate_obd">Simulate OBD data (no bike)</string>
+    <string name="simulate_obd_hint">Debug builds only. Restart tracking after changing this.</string>
+    <string name="settings_section_debug">DEBUG</string>
     <string name="obd_no_paired_devices">No paired Bluetooth devices. Pair your OBD adapter in Bluetooth settings first.</string>
     <string name="obd_connect_failed">Couldn\'t connect to the OBD device. Try again.</string>
     <string name="obd_run_sweep">Run diagnostic sweep</string>

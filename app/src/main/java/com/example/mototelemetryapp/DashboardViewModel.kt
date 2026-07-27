@@ -255,6 +255,11 @@ class DashboardViewModel : ViewModel() {
     val obdRawData = _obdRawData.asStateFlow()
     private var obdRawDataCollectJob: Job? = null
 
+    // Fixed for the service's lifetime rather than a flow - the source is chosen once in
+    // onCreate() and never swapped, so this only needs re-reading on (re)bind.
+    private val _obdSimulated = MutableStateFlow(false)
+    val obdSimulated = _obdSimulated.asStateFlow()
+
     private var trackingActiveCollectJob: Job? = null
 
     private val connection = object : ServiceConnection {
@@ -262,6 +267,7 @@ class DashboardViewModel : ViewModel() {
             val binder = service as TelemetryService.LocalBinder
             telemetryService = binder.getService()
             _isServiceBound.value = true
+            _obdSimulated.value = telemetryService?.obdSimulated == true
             // Binding (e.g. just opening Panel or Bike Info) isn't the same as a ride actually
             // being recorded - observe the service's real tracking state instead of assuming
             // true, otherwise Backup/Restore's "don't run mid-ride" guard gets stuck disabled.
@@ -304,6 +310,7 @@ class DashboardViewModel : ViewModel() {
         override fun onServiceDisconnected(name: ComponentName?) {
             telemetryService = null
             _isServiceBound.value = false
+            _obdSimulated.value = false
             // _isTrackingActive is intentionally left as-is - it reflects whether a ride is
             // actually being recorded, independent of whether the UI is currently bound.
             trackingActiveCollectJob?.cancel()

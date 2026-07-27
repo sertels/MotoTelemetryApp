@@ -308,6 +308,7 @@ class MainActivity : AppCompatActivity() {
                 val obdSweepResults by dashboardViewModel.obdSweepResults.collectAsState()
                 val obdSweepProgress by dashboardViewModel.obdSweepProgress.collectAsState()
                 val obdConnectError by dashboardViewModel.obdConnectError.collectAsState()
+                val obdSimulated by dashboardViewModel.obdSimulated.collectAsState()
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
@@ -360,6 +361,7 @@ class MainActivity : AppCompatActivity() {
                                 connected = obdConnected,
                                 onFetchDevices = { dashboardViewModel.getPairedObdDevices() },
                                 onConnect = { address -> dashboardViewModel.connectObd(context, address) },
+                                simulated = obdSimulated,
                                 onDisconnect = { dashboardViewModel.disconnectObd() },
                                 sweepRunning = obdSweepRunning,
                                 sweepResults = obdSweepResults,
@@ -607,9 +609,19 @@ class MainActivity : AppCompatActivity() {
                                     mutableStateOf(appPrefs.getInt(KEY_RIDE_GRACE_PERIOD_MINUTES, DEFAULT_RIDE_GRACE_PERIOD_MINUTES))
                                 }
                                 val currentLocaleTag = AppCompatDelegate.getApplicationLocales()[0]?.language ?: "en"
+                                // Seeded from isObdSimulationEnabled() rather than the raw pref so the
+                                // switch shows the value actually in force - including the
+                                // no-adapter default that applies before anything has been stored.
+                                var simulateObd by remember { mutableStateOf(isObdSimulationEnabled(context)) }
 
                                 SettingsScreen(
                                     autoStartOnObdConnect = autoStartOnObdConnect,
+                                    showDebugSection = BuildConfig.DEBUG,
+                                    simulateObd = simulateObd,
+                                    onSimulateObdChange = { checked ->
+                                        simulateObd = checked
+                                        appPrefs.edit().putBoolean(KEY_SIMULATE_OBD, checked).apply()
+                                    },
                                     onAutoStartToggleChange = { checked ->
                                         autoStartOnObdConnect = checked
                                         appPrefs.edit().putBoolean(KEY_AUTO_START_ON_OBD_CONNECT, checked).apply()
@@ -1349,6 +1361,9 @@ private const val KEY_BATTERY_OPT_PROMPTED = "battery_opt_prompted"
 const val APP_PREFS_NAME = "app_prefs"
 const val KEY_AUTO_START_ON_OBD_CONNECT = "auto_start_on_obd_connect"
 const val KEY_RIDE_GRACE_PERIOD_MINUTES = "ride_grace_period_minutes"
+// Absent (rather than false) until the user picks a side, so isObdSimulationEnabled() can tell
+// "never chosen" from "explicitly off" and only then fall back to detecting a missing adapter.
+const val KEY_SIMULATE_OBD = "simulate_obd"
 const val DEFAULT_RIDE_GRACE_PERIOD_MINUTES = 10
 const val MIN_RIDE_GRACE_PERIOD_MINUTES = 1
 const val MAX_RIDE_GRACE_PERIOD_MINUTES = 60

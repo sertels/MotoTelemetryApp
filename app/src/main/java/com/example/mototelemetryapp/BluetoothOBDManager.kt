@@ -31,9 +31,14 @@ data class PidMapping(val header: String, val command: String, val signal: Strin
 // dataLoopScope must outlive whatever UI coroutine (e.g. viewModelScope) triggers connect() -
 // pass the owning Service's own scope, not one tied to an Activity/ViewModel, or the poll loop
 // gets cancelled the moment that UI component is destroyed even though the ride keeps recording.
-class BluetoothOBDManager(private val context: Context, private val dataLoopScope: CoroutineScope) {
+class BluetoothOBDManager(
+    private val context: Context,
+    private val dataLoopScope: CoroutineScope
+) : ObdSource {
 
     private val tag = "BluetoothOBDManager"
+
+    override val isSimulated = false
     private val obdUuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -42,10 +47,10 @@ class BluetoothOBDManager(private val context: Context, private val dataLoopScop
     private var inputStream: InputStream? = null
 
     private val _isConnected = MutableStateFlow(false)
-    val isConnected = _isConnected.asStateFlow()
+    override val isConnected = _isConnected.asStateFlow()
 
     private val _obdData = MutableStateFlow<Map<String, Int>>(emptyMap())
-    val obdData = _obdData.asStateFlow()
+    override val obdData = _obdData.asStateFlow()
 
     // Common Bluetooth SPP adapter names in the wild (ELM327 clones ship under many brands),
     // used only as a first-connect fallback before the user has picked a device explicitly.
@@ -56,22 +61,22 @@ class BluetoothOBDManager(private val context: Context, private val dataLoopScop
     private val ioMutex = Mutex()
 
     private val _sweepRunning = MutableStateFlow(false)
-    val sweepRunning = _sweepRunning.asStateFlow()
+    override val sweepRunning = _sweepRunning.asStateFlow()
 
     private val _sweepResults = MutableStateFlow<List<ObdSweepEntry>>(emptyList())
-    val sweepResults = _sweepResults.asStateFlow()
+    override val sweepResults = _sweepResults.asStateFlow()
 
     // (completed probes, total probes) for the currently running sweep, so the UI can show
     // real progress instead of an indefinite spinner.
     private val _sweepProgress = MutableStateFlow(0 to 0)
-    val sweepProgress = _sweepProgress.asStateFlow()
+    override val sweepProgress = _sweepProgress.asStateFlow()
 
     // Check-engine (MIL) status and any stored DTCs, refreshed periodically by the data loop.
     private val _milOn = MutableStateFlow(false)
-    val milOn = _milOn.asStateFlow()
+    override val milOn = _milOn.asStateFlow()
 
     private val _dtcCodes = MutableStateFlow<List<String>>(emptyList())
-    val dtcCodes = _dtcCodes.asStateFlow()
+    override val dtcCodes = _dtcCodes.asStateFlow()
 
     private var dataLoopTick = 0
     private var dataLoopJob: Job? = null
@@ -97,20 +102,26 @@ class BluetoothOBDManager(private val context: Context, private val dataLoopScop
         return adapter.bondedDevices.toList()
     }
 
-    fun getPreferredDeviceAddress(): String? = prefs.getString(KEY_DEVICE_ADDRESS, null)
+    // Adapters that never advertised a name still need to be pickable, so fall back to the
+    // address as the label rather than dropping the device from the list.
+    @SuppressLint("MissingPermission")
+    override fun getPairedDeviceEntries(): List<Pair<String, String>> =
+        getPairedDevices().map { (it.name ?: it.address) to it.address }
+
+    override fun getPreferredDeviceAddress(): String? = prefs.getString(KEY_DEVICE_ADDRESS, null)
 
     fun setPreferredDevice(address: String) {
         prefs.edit().putString(KEY_DEVICE_ADDRESS, address).apply()
     }
 
     // Connects to the explicitly chosen device and remembers it for future rides.
-    suspend fun connectToDevice(address: String): Boolean {
+    override suspend fun connectToDevice(address: String): Boolean {
         setPreferredDevice(address)
         return connect()
     }
 
     @SuppressLint("MissingPermission")
-    suspend fun connect(): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun connect(): Boolean = withContext(Dispatchers.IO) {
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val adapter = bluetoothManager.adapter
 
@@ -267,7 +278,7 @@ class BluetoothOBDManager(private val context: Context, private val dataLoopScop
 
     // Mode 04: erases stored DTCs, turns off the MIL, and resets the ECU's readiness monitors.
     // If the underlying fault is still active it can set a new code within the next drive cycle.
-    suspend fun clearDtcs(): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun clearDtcs(): Boolean = withContext(Dispatchers.IO) {
         if (!_isConnected.value) return@withContext false
 
         ioMutex.withLock {
@@ -349,9 +360,9 @@ class BluetoothOBDManager(private val context: Context, private val dataLoopScop
     // DIDs, so an unknown value (e.g. fuel level, which isn't exposed via any standard PID on
     // this ECU) can be hunted for by hand: run this, then compare which (header, DID) pairs
     // return a plausible value against a known real-world state (e.g. right after a fill-up).
-    suspend fun sweepHeadersAndDids(
-        headers: List<String> = DEFAULT_SWEEP_HEADERS,
-        dids: List<String> = DEFAULT_SWEEP_DIDS
+    override suspend fun sweepHeadersAndDids(
+        headers: List<String>,
+        dids: List<String>
     ) {
         if (!_isConnected.value) return
         _sweepRunning.value = true
@@ -545,7 +556,7 @@ class BluetoothOBDManager(private val context: Context, private val dataLoopScop
         } catch (_: Exception) { 0 }
     }
 
-    fun disconnect() {
+    override fun disconnect() {
         try {
             _isConnected.value = false
             dataLoopJob?.cancel()

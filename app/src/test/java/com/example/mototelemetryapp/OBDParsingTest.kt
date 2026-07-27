@@ -1,6 +1,8 @@
 package com.example.mototelemetryapp
 
 import android.content.Context
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
@@ -17,7 +19,9 @@ class OBDParsingTest {
     @Before
     fun setup() {
         MockitoAnnotations.openMocks(this)
-        obdManager = BluetoothOBDManager(mockContext)
+        // These tests only exercise the pure parse* helpers, so the data-loop scope is never
+        // started - any scope will do.
+        obdManager = BluetoothOBDManager(mockContext, CoroutineScope(Dispatchers.Unconfined))
     }
 
     @Test

@@ -37,6 +37,9 @@ android {
     }
     buildFeatures {
         compose = true
+        // Needed for BuildConfig.DEBUG, which hard-gates the OBD simulator so a release build
+        // can never present synthetic telemetry as real. Off by default since AGP 8.
+        buildConfig = true
     }
 }
 

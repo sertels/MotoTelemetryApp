@@ -41,7 +41,9 @@ class TelemetryService : Service() {
     private val channelId = "TelemetryServiceChannel"
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     
-    private var bluetoothOBDManager: BluetoothOBDManager? = null
+    // Either the real Bluetooth adapter or the debug simulator - chosen once in onCreate() so
+    // everything downstream is unaware of which one it got.
+    private var bluetoothOBDManager: ObdSource? = null
     private var orientationManager: OrientationManager? = null
     private var db: AppDatabase? = null
     private var fusedLocationClient: FusedLocationProviderClient? = null
@@ -89,7 +91,11 @@ class TelemetryService : Service() {
 
     @SuppressLint("MissingPermission")
     fun getPairedObdDevices(): List<Pair<String, String>> =
-        bluetoothOBDManager?.getPairedDevices()?.map { (it.name ?: it.address) to it.address } ?: emptyList()
+        bluetoothOBDManager?.getPairedDeviceEntries() ?: emptyList()
+
+    // Lets the UI label the status badge as synthetic, so no screenshot is ambiguous about
+    // whether it came from a real bike.
+    val obdSimulated get() = bluetoothOBDManager?.isSimulated == true
 
     suspend fun connectObd(address: String): Boolean =
         bluetoothOBDManager?.connectToDevice(address) ?: false
@@ -120,7 +126,12 @@ class TelemetryService : Service() {
         createNotificationChannel()
 
         // Initialize components
-        bluetoothOBDManager = BluetoothOBDManager(this, serviceScope)
+        bluetoothOBDManager = if (isObdSimulationEnabled(this)) {
+            Log.w("TelemetryService", "OBD simulation enabled - telemetry below is synthetic.")
+            SimulatedObdSource(serviceScope)
+        } else {
+            BluetoothOBDManager(this, serviceScope)
+        }
         orientationManager = OrientationManager(this)
         db = AppDatabase.getDatabase(this)
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)

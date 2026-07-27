@@ -57,6 +57,9 @@ private val CardGradient = Brush.verticalGradient(listOf(Color(0xFF1C1C1C), Colo
 private val BarTrack = Color(0xFF2B2B2B)
 private val BadgeBg = Color(0xFF1A1A1A)
 
+// Amber, deliberately not the accent colour used for a healthy real connection.
+val ObdSimulatedAccent = Color(0xFFFFB300)
+
 @Composable
 fun DashboardScreen(
     data: TelemetryRecord?,
@@ -206,6 +209,7 @@ fun ObdStatusBadge(
     connected: Boolean,
     onFetchDevices: () -> List<Pair<String, String>>,
     onConnect: (String) -> Unit,
+    simulated: Boolean = false,
     sweepRunning: Boolean = false,
     sweepResults: List<ObdSweepEntry> = emptyList(),
     sweepProgress: Pair<Int, Int> = 0 to 0,
@@ -230,16 +234,33 @@ fun ObdStatusBadge(
                 .padding(horizontal = 10.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Simulated data gets its own amber treatment rather than the usual accent green, so
+            // a glance (or a screenshot) can never mistake invented telemetry for a real bike.
+            val dotColor = when {
+                connected && simulated -> ObdSimulatedAccent
+                connected -> TelemetryAccent
+                else -> Color(0xFF5A5A5A)
+            }
             Box(
                 modifier = Modifier
                     .size(6.dp)
                     .clip(CircleShape)
-                    .background(if (connected) TelemetryAccent else Color(0xFF5A5A5A))
+                    .background(dotColor)
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-                text = stringResource(if (connected) R.string.obd_connected else R.string.obd_disconnected),
-                color = if (connected) Color.White else TelemetryOnSurfaceMuted,
+                text = stringResource(
+                    when {
+                        connected && simulated -> R.string.obd_simulated
+                        connected -> R.string.obd_connected
+                        else -> R.string.obd_disconnected
+                    }
+                ),
+                color = when {
+                    connected && simulated -> ObdSimulatedAccent
+                    connected -> Color.White
+                    else -> TelemetryOnSurfaceMuted
+                },
                 fontSize = 10.sp,
                 letterSpacing = 0.5.sp,
                 fontWeight = FontWeight.SemiBold

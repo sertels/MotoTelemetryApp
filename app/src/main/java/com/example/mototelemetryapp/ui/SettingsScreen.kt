@@ -47,7 +47,10 @@ fun SettingsScreen(
     batteryOptExempt: Boolean,
     onRequestBatteryOptExemption: () -> Unit,
     currentLocaleTag: String,
-    onLanguageChange: (String) -> Unit
+    onLanguageChange: (String) -> Unit,
+    showDebugSection: Boolean = false,
+    simulateObd: Boolean = false,
+    onSimulateObdChange: (Boolean) -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -124,6 +127,25 @@ fun SettingsScreen(
                     fontWeight = FontWeight.SemiBold
                 )
             }
+        }
+
+        // Debug builds only (see BuildConfig.DEBUG at the call site) - the simulator is hard-gated
+        // in isObdSimulationEnabled() too, so a release build ignores the stored value regardless.
+        if (showDebugSection) {
+            Spacer(modifier = Modifier.height(28.dp))
+            SettingsSectionLabel(stringResource(R.string.settings_section_debug))
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsToggleRow(
+                label = stringResource(R.string.simulate_obd),
+                checked = simulateObd,
+                onCheckedChange = onSimulateObdChange
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = stringResource(R.string.simulate_obd_hint),
+                color = TelemetryOnSurfaceMuted,
+                fontSize = 10.sp
+            )
         }
 
         Spacer(modifier = Modifier.height(32.dp))
