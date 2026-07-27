@@ -20,7 +20,6 @@ import androidx.core.content.ContextCompat
 import com.example.mototelemetryapp.data.AppDatabase
 import com.example.mototelemetryapp.data.Session
 import com.example.mototelemetryapp.data.TelemetryRecord
-import com.google.android.gms.location.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,7 +45,7 @@ class TelemetryService : Service() {
     private var bluetoothOBDManager: ObdSource? = null
     private var orientationManager: OrientationSource? = null
     private var db: AppDatabase? = null
-    private var fusedLocationClient: FusedLocationProviderClient? = null
+    private var locationSource: LocationSource? = null
     
     private var lastLocation: Location? = null
     private var currentSessionId: Long = -1
@@ -143,8 +142,12 @@ class TelemetryService : Service() {
         } else {
             OrientationManager(this)
         }
+        locationSource = if (simulate) {
+            SimulatedLocationSource(serviceScope)
+        } else {
+            FusedLocationSource(this, mainLooper)
+        }
         db = AppDatabase.getDatabase(this)
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
         registerObdLinkReceiver()
     }
@@ -232,34 +235,22 @@ class TelemetryService : Service() {
         return START_STICKY
     }
 
-    @SuppressLint("MissingPermission")
     private fun startLocationUpdates() {
-        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000)
-            .build()
+        locationSource?.start { newLocation ->
+            // Without this, ordinary GPS jitter while stationary (e.g. sitting at a red
+            // light during the OBD grace period) keeps accruing phantom distance, since
+            // distanceTo() was summed for every fix with no accuracy/motion floor.
+            val isAccurateEnough = newLocation.accuracy <= MAX_GPS_ACCURACY_METERS
+            val isMoving = !newLocation.hasSpeed() || newLocation.speed >= MIN_MOVING_SPEED_MPS
 
-        fusedLocationClient?.requestLocationUpdates(
-            locationRequest,
-            object : LocationCallback() {
-                override fun onLocationResult(locationResult: LocationResult) {
-                    val newLocation = locationResult.lastLocation ?: return
-
-                    // Without this, ordinary GPS jitter while stationary (e.g. sitting at a red
-                    // light during the OBD grace period) keeps accruing phantom distance, since
-                    // distanceTo() was summed for every fix with no accuracy/motion floor.
-                    val isAccurateEnough = newLocation.accuracy <= MAX_GPS_ACCURACY_METERS
-                    val isMoving = !newLocation.hasSpeed() || newLocation.speed >= MIN_MOVING_SPEED_MPS
-
-                    lastLocation?.let {
-                        if (isAccurateEnough && isMoving) {
-                            totalGpsDistanceMeters += it.distanceTo(newLocation)
-                        }
-                    }
-
-                    lastLocation = newLocation
+            lastLocation?.let {
+                if (isAccurateEnough && isMoving) {
+                    totalGpsDistanceMeters += it.distanceTo(newLocation)
                 }
-            },
-            mainLooper
-        )
+            }
+
+            lastLocation = newLocation
+        }
     }
 
     private fun startTelemetryTracking() {
@@ -446,6 +437,9 @@ class TelemetryService : Service() {
             
             obdManager?.disconnect()
             orientationManager?.stop()
+            // The fused client's callback outlived the service before this - requestLocationUpdates
+            // was never paired with a removeLocationUpdates anywhere.
+            locationSource?.stop()
         } catch (e: Exception) {
             Log.e("TelemetryService", "Error in onDestroy: ${e.message}", e)
         } finally {

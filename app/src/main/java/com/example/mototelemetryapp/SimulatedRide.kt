@@ -33,6 +33,13 @@ object SimulatedRide {
     // precisely so the G bar can never disagree with the lean gauge.
     fun lateralG(leanDeg: Float): Float = tan(Math.toRadians(leanDeg.toDouble())).toFloat()
 
+    // Yaw rate of a bike in a coordinated turn: the same lateral acceleration that sets the lean
+    // angle, divided by forward speed. Lets the simulated GPS track be drawn by the lean the
+    // gauges are already showing, instead of a route scripted separately that could contradict it.
+    // Caller must keep speed away from zero - the relation diverges as the bike stops.
+    fun turnRateRadPerSec(leanDeg: Float, speedMps: Float): Double =
+        (EARTH_G * lateralG(leanDeg)) / speedMps.toDouble()
+
     // Longitudinal G by differentiating scripted speed. Central difference over a small window,
     // which smooths the corners where the piecewise-linear script changes gradient abruptly.
     fun longitudinalG(elapsedSec: Float): Float {
