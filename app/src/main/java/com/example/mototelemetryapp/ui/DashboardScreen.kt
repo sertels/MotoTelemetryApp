@@ -32,6 +32,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalConfiguration
@@ -684,13 +685,19 @@ fun LeanGauge(
                     .rotate(lean)
             ) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
-                    drawLine(
-                        color = Color(0xFFFF1744),
-                        start = center.copy(y = center.y - size.height * 0.38f),
-                        end = center.copy(y = center.y + size.height * 0.38f),
-                        strokeWidth = 7.dp.toPx()
-                    )
-                    drawCircle(color = Color(0xFFE8E8E8), radius = 5.dp.toPx())
+                    // Kite-shaped needle matching the design's SVG path
+                    // "M75 22 L81 78 L75 88 L69 78 Z" in a 150x150 viewBox, expressed here
+                    // as fractions of this canvas's own size so it scales with circleSize.
+                    val needlePath = Path().apply {
+                        moveTo(center.x, center.y - 0.3533f * size.height)
+                        lineTo(center.x + 0.04f * size.width, center.y + 0.02f * size.height)
+                        lineTo(center.x, center.y + 0.0867f * size.height)
+                        lineTo(center.x - 0.04f * size.width, center.y + 0.02f * size.height)
+                        close()
+                    }
+                    drawPath(path = needlePath, color = Color(0xFFE8E8E8))
+                    drawCircle(color = Color(0xFF1C1C1C), radius = 9.dp.toPx())
+                    drawCircle(color = Color(0xFFE8E8E8), radius = 6.dp.toPx())
                 }
             }
         }
@@ -761,8 +768,8 @@ fun BarsCard(data: TelemetryRecord?, modifier: Modifier = Modifier) {
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        GForceBar(label = stringResource(R.string.g_force_lat), value = data?.gForceLat ?: 0f)
-        GForceBar(label = stringResource(R.string.g_force_lon), value = data?.gForceLon ?: 0f)
+        GForceBar(label = stringResource(R.string.g_force_lat), value = data?.gForceLat ?: 0f, color = TelemetryAccent)
+        GForceBar(label = stringResource(R.string.g_force_lon), value = data?.gForceLon ?: 0f, color = Color(0xFFFF9100))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -776,30 +783,26 @@ fun BarsCard(data: TelemetryRecord?, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun GForceBar(label: String, value: Float, maxG: Float = 1.2f, segments: Int = 9) {
-    val litCount = ((abs(value) / maxG).coerceIn(0f, 1f) * segments).toInt()
+fun GForceBar(label: String, value: Float, color: Color, maxG: Float = 1.2f) {
+    val animatedValue by animateFloatAsState(targetValue = (abs(value) / maxG).coerceIn(0f, 1f))
     Column {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(text = label, color = TelemetryOnSurfaceMuted, fontSize = 10.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
             Text(text = "%.2f g".format(value), color = Color(0xFFCCCCCC), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
         }
         Spacer(modifier = Modifier.height(5.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            repeat(segments) { i ->
-                val lit = i < litCount
-                val color = when {
-                    !lit -> Color(0xFF2B2B2B)
-                    i >= 7 -> Color(0xFFFF1744)
-                    i >= 5 -> Color(0xFFFFE600)
-                    else -> Color(0xFF00E676)
-                }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(8.dp)
-                        .background(color, RoundedCornerShape(2.dp))
-                )
-            }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .background(BarTrack, RoundedCornerShape(100.dp))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(animatedValue)
+                    .fillMaxHeight()
+                    .background(color, RoundedCornerShape(100.dp))
+            )
         }
     }
 }
