@@ -10,6 +10,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
@@ -29,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.mototelemetryapp.BluetoothOBDManager
+import com.example.mototelemetryapp.DtcDescriptions
 import com.example.mototelemetryapp.ObdSweepEntry
 import com.example.mototelemetryapp.R
 import com.example.mototelemetryapp.ui.theme.TelemetryAccent
@@ -229,6 +232,67 @@ private fun StatCard(label: String, value: String, unit: String, hot: Boolean = 
     }
 }
 
+// A bare "P0133" tells a rider nothing, so each code carries a one-line summary and expands on tap
+// for the fuller explanation - which is too long to sit on the row without pushing the codes
+// themselves off the screen.
+@Composable
+private fun DtcRow(code: String) {
+    var expanded by remember { mutableStateOf(false) }
+    val description = remember(code) { DtcDescriptions.describe(code) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0x38000000), RoundedCornerShape(10.dp))
+            .clickable { expanded = !expanded }
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = code,
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Icon(
+                imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = stringResource(
+                    if (expanded) R.string.dtc_collapse else R.string.dtc_expand
+                ),
+                tint = Color(0xFFFF8A80),
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Text(
+            text = description.summary,
+            color = Color(0xFFE0B4B0),
+            fontSize = 11.sp,
+            modifier = Modifier.padding(top = 3.dp)
+        )
+        if (expanded) {
+            Text(
+                text = description.detail,
+                color = TelemetryOnSurfaceMuted,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            // Said plainly rather than implied, so a structural guess is never mistaken for a
+            // real diagnosis of this specific fault.
+            if (!description.isKnownCode) {
+                Text(
+                    text = stringResource(R.string.dtc_not_in_database),
+                    color = Color(0xFF8A8A8A),
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun DiagnosticsCard(obdConnected: Boolean, obdMilOn: Boolean, dtcCodes: List<String>, onClearDtcs: () -> Unit) {
     var showClearConfirm by remember { mutableStateOf(false) }
@@ -266,20 +330,7 @@ private fun DiagnosticsCard(obdConnected: Boolean, obdMilOn: Boolean, dtcCodes: 
                 )
             }
             dtcCodes.forEach { code ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0x38000000), RoundedCornerShape(10.dp))
-                        .padding(horizontal = 10.dp, vertical = 8.dp)
-                ) {
-                    Text(
-                        text = code,
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
+                DtcRow(code)
             }
             OutlinedButton(
                 onClick = { showClearConfirm = true },
