@@ -287,7 +287,13 @@ class MainActivity : AppCompatActivity() {
 
             MotoTelemetryAppTheme {
                 val isBound by dashboardViewModel.isServiceBound.collectAsState()
-                
+                val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+                // The Home/Launch screen (unbound "dashboard") has its own Quick Access grid and
+                // no chrome. Every other route - including "dashboard" once bound, and tabs like
+                // History/Analysis reached directly from Home without binding first - needs the
+                // home button and bottom nav so the user is never stranded without navigation.
+                val showChrome = currentRoute != "dashboard" || isBound
+
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     topBar = {
@@ -295,8 +301,14 @@ class MainActivity : AppCompatActivity() {
                             title = { },
                             colors = TopAppBarDefaults.topAppBarColors(containerColor = TelemetrySurfaceElevated),
                             navigationIcon = {
-                                if (isBound) {
-                                    IconButton(onClick = { dashboardViewModel.unbindService(context) }) {
+                                if (showChrome) {
+                                    IconButton(onClick = {
+                                        dashboardViewModel.unbindService(context)
+                                        navController.navigate("dashboard") {
+                                            popUpTo("dashboard") { inclusive = true }
+                                            launchSingleTop = true
+                                        }
+                                    }) {
                                         Icon(Icons.Default.Home, contentDescription = stringResource(R.string.main_title))
                                     }
                                 }
@@ -321,11 +333,10 @@ class MainActivity : AppCompatActivity() {
                         )
                     },
                     bottomBar = bottomBar@{
-                        // Matches the design: the tab bar only makes sense once bound to a
-                        // session (Panel/History/Bike Info/Analysis/Settings) - the Launch/Home
-                        // screen has its own Quick Access grid instead.
-                        if (!isBound) return@bottomBar
-                        val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+                        // Matches the design: the tab bar only makes sense once on a tab screen
+                        // (Panel/History/Bike Info/Analysis/Settings) - the Launch/Home screen has
+                        // its own Quick Access grid instead. See showChrome above.
+                        if (!showChrome) return@bottomBar
                         val navItemColors = NavigationBarItemDefaults.colors(
                             selectedIconColor = TelemetryAccent,
                             selectedTextColor = TelemetryAccent,
@@ -338,7 +349,13 @@ class MainActivity : AppCompatActivity() {
                                 icon = { Icon(Icons.Default.Speed, contentDescription = null) },
                                 label = { Text(stringResource(R.string.panel)) },
                                 selected = currentRoute == "dashboard",
-                                onClick = { navController.navigate("dashboard") },
+                                onClick = {
+                                    // Reachable while unbound (e.g. from History/Analysis without
+                                    // ever visiting Home's Start Tracking flow) - bind first so
+                                    // this always lands on live telemetry, not the Home screen.
+                                    if (!isBound) dashboardViewModel.bindService(context)
+                                    navController.navigate("dashboard")
+                                },
                                 colors = navItemColors
                             )
                             NavigationBarItem(
@@ -452,6 +469,7 @@ class MainActivity : AppCompatActivity() {
                                         onGoToPanel = { dashboardViewModel.bindService(context) },
                                         onNavigateHistory = { navController.navigate("history") },
                                         onNavigateAnalysis = { navController.navigate("analysis") },
+                                        onNavigateSettings = { navController.navigate("settings") },
                                         onBackup = {
                                             requestDriveAccessToken(onToken = { token ->
                                                 dashboardViewModel.backupToCloud(context, token)
@@ -616,6 +634,7 @@ fun MainScreen(
     onNavigateHistory: () -> Unit,
     onNavigateAnalysis: () -> Unit,
     onNavigateBikeInfo: () -> Unit,
+    onNavigateSettings: () -> Unit,
     onBackup: () -> Unit,
     onOpenRestore: () -> Unit,
     onDismissRestore: () -> Unit,
@@ -645,6 +664,7 @@ fun MainScreen(
                 onNavigateHistory = onNavigateHistory,
                 onNavigateAnalysis = onNavigateAnalysis,
                 onNavigateBikeInfo = onNavigateBikeInfo,
+                onNavigateSettings = onNavigateSettings,
                 onBackup = onBackup,
                 onOpenRestore = { showRestoreDialog = true; onOpenRestore() }
             )
@@ -664,6 +684,7 @@ fun MainScreen(
                 onNavigateHistory = onNavigateHistory,
                 onNavigateAnalysis = onNavigateAnalysis,
                 onNavigateBikeInfo = onNavigateBikeInfo,
+                onNavigateSettings = onNavigateSettings,
                 onBackup = onBackup,
                 onOpenRestore = { showRestoreDialog = true; onOpenRestore() }
             )
@@ -871,6 +892,7 @@ private fun HomeQuickAccessGrid(
     onNavigateHistory: () -> Unit,
     onNavigateAnalysis: () -> Unit,
     onNavigateBikeInfo: () -> Unit,
+    onNavigateSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -878,6 +900,7 @@ private fun HomeQuickAccessGrid(
         QuickAccessButton(icon = Icons.Default.History, label = stringResource(R.string.history), onClick = onNavigateHistory, modifier = Modifier.weight(1f))
         QuickAccessButton(icon = Icons.Default.QueryStats, label = stringResource(R.string.analysis), onClick = onNavigateAnalysis, modifier = Modifier.weight(1f))
         QuickAccessButton(icon = Icons.Default.TwoWheeler, label = stringResource(R.string.bike_info), onClick = onNavigateBikeInfo, modifier = Modifier.weight(1f))
+        QuickAccessButton(icon = Icons.Default.Settings, label = stringResource(R.string.settings), onClick = onNavigateSettings, modifier = Modifier.weight(1f))
     }
 }
 
@@ -989,6 +1012,7 @@ private fun HomePortraitContent(
     onNavigateHistory: () -> Unit,
     onNavigateAnalysis: () -> Unit,
     onNavigateBikeInfo: () -> Unit,
+    onNavigateSettings: () -> Unit,
     onBackup: () -> Unit,
     onOpenRestore: () -> Unit
 ) {
@@ -1046,6 +1070,7 @@ private fun HomePortraitContent(
             onNavigateHistory = onNavigateHistory,
             onNavigateAnalysis = onNavigateAnalysis,
             onNavigateBikeInfo = onNavigateBikeInfo,
+            onNavigateSettings = onNavigateSettings,
             modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
         )
 
@@ -1082,6 +1107,7 @@ private fun HomeLandscapeContent(
     onNavigateHistory: () -> Unit,
     onNavigateAnalysis: () -> Unit,
     onNavigateBikeInfo: () -> Unit,
+    onNavigateSettings: () -> Unit,
     onBackup: () -> Unit,
     onOpenRestore: () -> Unit
 ) {
@@ -1139,6 +1165,7 @@ private fun HomeLandscapeContent(
                 onNavigateHistory = onNavigateHistory,
                 onNavigateAnalysis = onNavigateAnalysis,
                 onNavigateBikeInfo = onNavigateBikeInfo,
+                onNavigateSettings = onNavigateSettings,
                 modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
             )
         }
