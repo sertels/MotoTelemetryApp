@@ -37,6 +37,7 @@ import com.example.mototelemetryapp.ui.theme.TelemetryOnSurfaceMuted
 private val CardBg = Color(0xFF161616)
 private val CardBorderSoft = Color(0xFF202020)
 private const val COOLANT_HOT_THRESHOLD_C = 100
+private const val MIN_SPEED_FOR_ECONOMY_KMH = 5
 
 @Composable
 fun BikeInfoScreen(
@@ -49,6 +50,7 @@ fun BikeInfoScreen(
     coolantC: Int?,
     fuelLevelPct: Int?,
     fuelRateLph: Float?,
+    speedKmh: Int?,
     obdMilOn: Boolean,
     obdDtcCodes: List<String>,
     onClearObdDtcs: () -> Unit,
@@ -153,10 +155,14 @@ fun BikeInfoScreen(
                 )
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                val l100km = if (fuelRateLph != null && fuelRateLph > 0f && speedKmh != null && speedKmh >= MIN_SPEED_FOR_ECONOMY_KMH) {
+                    (fuelRateLph / speedKmh) * 100f
+                } else null
                 StatCard(
                     label = stringResource(R.string.bike_info_fuel_rate),
                     value = "%.1f".format(fuelRateLph ?: 0f),
                     unit = "L/h",
+                    secondaryText = l100km?.let { "%.1f L/100km".format(it) },
                     modifier = Modifier.weight(1f)
                 )
                 StatCard(
@@ -196,7 +202,7 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun StatCard(label: String, value: String, unit: String, hot: Boolean = false, modifier: Modifier = Modifier) {
+private fun StatCard(label: String, value: String, unit: String, hot: Boolean = false, secondaryText: String? = null, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .background(CardBg, RoundedCornerShape(14.dp))
@@ -227,6 +233,15 @@ private fun StatCard(label: String, value: String, unit: String, hot: Boolean = 
             )
             Spacer(modifier = Modifier.width(3.dp))
             Text(text = unit, color = TelemetryOnSurfaceMuted, fontSize = 11.sp, modifier = Modifier.padding(bottom = 2.dp))
+        }
+        if (secondaryText != null) {
+            Text(
+                text = secondaryText,
+                color = TelemetryOnSurfaceMuted,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(top = 3.dp)
+            )
         }
     }
 }
