@@ -761,7 +761,8 @@ fun BarsCard(data: TelemetryRecord?, modifier: Modifier = Modifier) {
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        GForceBar(label = stringResource(R.string.g_force), value = data?.gForce ?: 0f)
+        GForceBar(label = stringResource(R.string.g_force_lat), value = data?.gForceLat ?: 0f)
+        GForceBar(label = stringResource(R.string.g_force_lon), value = data?.gForceLon ?: 0f)
         Box(
             modifier = Modifier
                 .fillMaxWidth()

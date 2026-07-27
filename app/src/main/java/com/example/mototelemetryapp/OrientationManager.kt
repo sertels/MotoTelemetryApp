@@ -10,13 +10,14 @@ import android.view.WindowManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlin.math.abs
-import kotlin.math.sqrt
 
 class OrientationManager(context: Context) : SensorEventListener {
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-    private val accelSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    // Linear acceleration has gravity already subtracted out, unlike TYPE_ACCELEROMETER - needed
+    // so lateral/longitudinal G reads ~0 at a standstill instead of ~1g from gravity alone.
+    private val accelSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     // getOrientation()'s roll/pitch are defined relative to the phone's natural (portrait)
@@ -33,8 +34,11 @@ class OrientationManager(context: Context) : SensorEventListener {
     private val _leanAngle = MutableStateFlow(0f)
     val leanAngle = _leanAngle.asStateFlow()
 
-    private val _gForce = MutableStateFlow(0f)
-    val gForce = _gForce.asStateFlow()
+    private val _gForceLat = MutableStateFlow(0f)
+    val gForceLat = _gForceLat.asStateFlow()
+
+    private val _gForceLon = MutableStateFlow(0f)
+    val gForceLon = _gForceLon.asStateFlow()
 
     fun start() {
         rotationSensor?.let {
@@ -93,15 +97,25 @@ class OrientationManager(context: Context) : SensorEventListener {
                     _leanAngle.value = normalizeAngle(rawRoll - rollOffset)
                 }
             }
-            Sensor.TYPE_ACCELEROMETER -> {
+            Sensor.TYPE_LINEAR_ACCELERATION -> {
                 val x = event.values[0]
                 val y = event.values[1]
-                val z = event.values[2]
-                
-                // Toplam ivme (G cinsinden)
+
+                // Same screen-rotation correction as the lean angle above: the accelerometer's
+                // axes are fixed to the device, not the screen, so a landscape-mounted phone
+                // needs its X/Y swapped to match the bike's lateral/forward axes. Assumes the
+                // phone's natural (portrait) top edge points toward the front of the bike.
+                @Suppress("DEPRECATION")
+                val (bikeX, bikeY) = when (windowManager.defaultDisplay.rotation) {
+                    Surface.ROTATION_90 -> y to -x
+                    Surface.ROTATION_180 -> -x to -y
+                    Surface.ROTATION_270 -> -y to x
+                    else -> x to y
+                }
+
                 val gravity = SensorManager.GRAVITY_EARTH
-                val totalAccel = sqrt((x * x + y * y + z * z).toDouble()).toFloat()
-                _gForce.value = totalAccel / gravity
+                _gForceLat.value = bikeX / gravity
+                _gForceLon.value = bikeY / gravity
             }
         }
     }

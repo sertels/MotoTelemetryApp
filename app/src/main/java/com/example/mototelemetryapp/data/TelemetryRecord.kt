@@ -29,7 +29,8 @@ data class TelemetryRecord(
     val brakeRear: Int,
     val leanAnglePhone: Float,
     val leanAngleBike: Float,
-    val gForce: Float,
+    val gForceLat: Float,
+    val gForceLon: Float,
     val fuelRate: Float, // Liters per hour
     val fuelLevel: Int, // Percentage
     val coolantTemp: Int, // Celsius

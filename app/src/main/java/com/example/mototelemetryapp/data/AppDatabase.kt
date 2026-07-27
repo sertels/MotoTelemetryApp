@@ -12,13 +12,13 @@ import java.io.IOException
 // DB_VERSION below must be kept in sync with this annotation's version - Room's @Database
 // annotation isn't retained at runtime, so it can't be read back reflectively to compare
 // against the on-disk version.
-@Database(entities = [Session::class, TelemetryRecord::class], version = 7, exportSchema = false)
+@Database(entities = [Session::class, TelemetryRecord::class], version = 8, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun telemetryDao(): TelemetryDao
 
     companion object {
         private const val DB_NAME = "telemetry_database"
-        private const val DB_VERSION = 7
+        private const val DB_VERSION = 8
         private const val TAG = "AppDatabase"
 
         @Volatile
