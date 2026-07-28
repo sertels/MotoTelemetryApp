@@ -509,7 +509,13 @@ fun SpeedGearRpmCard(data: TelemetryRecord?) {
             .shadow(8.dp, RoundedCornerShape(20.dp), clip = false)
             .background(CardGradient, RoundedCornerShape(20.dp))
             .border(1.dp, CardBorder, RoundedCornerShape(20.dp))
-            .padding(horizontal = 16.dp, vertical = 18.dp),
+            .padding(horizontal = 16.dp, vertical = 18.dp)
+            // This Row sits inside a verticalScroll Column, which measures children with
+            // unbounded height - so VerticalDivider's fillMaxHeight(fraction) was resolving
+            // against infinity and collapsing to 0dp, not just being low-contrast. Height =
+            // IntrinsicSize.Min gives the Row (and so the divider) an actual bounded height to
+            // be a fraction of.
+            .height(IntrinsicSize.Min),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -547,24 +553,29 @@ fun SpeedRpmCard(data: TelemetryRecord?, isLandscape: Boolean, modifier: Modifie
 
 @Composable
 fun GearReadout(data: TelemetryRecord?, fontSize: androidx.compose.ui.unit.TextUnit) {
+    // Label above the value, matching how SPEED and RPM are laid out either side of this - it
+    // was below before, which read as a different kind of stat in the middle of two consistent
+    // ones.
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(text = stringResource(R.string.gear), color = TelemetryOnSurfaceMuted, fontSize = 9.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
         Text(
             text = if (data?.gear == 0) "N" else "${data?.gear ?: 0}",
             color = if (data?.gear == 0) TelemetryAccent else Color.White,
             fontSize = fontSize,
             fontWeight = FontWeight.ExtraBold
         )
-        Text(text = stringResource(R.string.gear), color = TelemetryOnSurfaceMuted, fontSize = 9.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
 fun VerticalDivider() {
+    // Shortened and lightened from a full-height 1dp line at CardBorder (0xFF262626) against a
+    // ~0xFF1C1C1C/0x161616 card - close enough in value to read as no separator at all.
     Box(
         modifier = Modifier
-            .fillMaxHeight()
+            .fillMaxHeight(0.62f)
             .width(1.dp)
-            .background(CardBorder)
+            .background(Color(0xFF3D3D3D))
     )
 }
 
