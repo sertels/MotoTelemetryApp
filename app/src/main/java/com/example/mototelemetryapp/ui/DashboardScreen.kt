@@ -77,7 +77,6 @@ fun DashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(backgroundBrush)
-                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 18.dp, vertical = 4.dp)
         ) {
             Row(
@@ -88,37 +87,33 @@ fun DashboardScreen(
                 LiveIndicator()
                 GpsCoordsText(data)
             }
-            Spacer(modifier = Modifier.height(3.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.align(Alignment.CenterVertically)) {
-                SpeedRpmCard(data, isLandscape = true)
-            }
-            Column(
-                modifier = Modifier.align(Alignment.CenterVertically),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                GearReadout(data, fontSize = 36.sp)
-            }
-            LeanGauge(
-                currentLean = currentLean,
-                leanSource = leanSource,
-                onToggleSource = onToggleSource,
-                onCalibrate = onCalibrate,
-                maxLeanLeft = maxLeanLeft,
-                maxLeanRight = maxLeanRight,
-                circleSize = 116.dp,
-                modifier = Modifier.align(Alignment.CenterVertically)
-            )
-            BarsCard(
-                data,
-                compact = true,
-                modifier = Modifier
-                    .weight(1f)
-                    .align(Alignment.CenterVertically)
-            )
+            // The status row above is pinned to the top; everything else shares the rest of the
+            // screen's height and is centered in it, rather than clumping at the top with a dead
+            // gap below - landscape has plenty of vertical room this cluster wasn't using.
+            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                // fillMaxWidth (not wrap-content centered) so BarsCard's weight(1f) below has
+                // actual leftover width to consume - SpeedGearRpmCard and the gauge are fixed
+                // width, everything past them belongs to the bars.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Intrinsic (not a guessed fixed dp) so it takes only what its three columns
+                    // actually need - a hardcoded width here previously starved BarsCard of room,
+                    // which made its labels wrap and blow its height past the row's.
+                    SpeedGearRpmCard(data, modifier = Modifier.width(IntrinsicSize.Min))
+                    LeanGauge(
+                        currentLean = currentLean,
+                        leanSource = leanSource,
+                        onToggleSource = onToggleSource,
+                        onCalibrate = onCalibrate,
+                        maxLeanLeft = maxLeanLeft,
+                        maxLeanRight = maxLeanRight,
+                        circleSize = 170.dp
+                    )
+                    BarsCard(data, compact = true, modifier = Modifier.weight(1f))
+                }
             }
         }
     } else {
@@ -499,9 +494,9 @@ fun ClearDtcsConfirmDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
 }
 
 @Composable
-fun SpeedGearRpmCard(data: TelemetryRecord?) {
+fun SpeedGearRpmCard(data: TelemetryRecord?, modifier: Modifier = Modifier) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .shadow(8.dp, RoundedCornerShape(20.dp), clip = false)
             .background(CardGradient, RoundedCornerShape(20.dp))
@@ -518,7 +513,7 @@ fun SpeedGearRpmCard(data: TelemetryRecord?) {
     ) {
         Column {
             Text(text = stringResource(R.string.speed), color = TelemetryOnSurfaceMuted, fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
-            Text(text = "${data?.speed ?: 0}", color = Color.White, fontSize = 58.sp, fontWeight = FontWeight.Bold)
+            Text(text = "${data?.speed ?: 0}", color = Color.White, fontSize = 58.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
             Text(text = stringResource(R.string.unit_kmh), color = TelemetryOnSurfaceMuted, fontSize = 13.sp)
         }
         VerticalDivider()
@@ -526,25 +521,8 @@ fun SpeedGearRpmCard(data: TelemetryRecord?) {
         VerticalDivider()
         Column(horizontalAlignment = Alignment.End) {
             Text(text = stringResource(R.string.rpm), color = TelemetryOnSurfaceMuted, fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
-            Text(text = "${data?.rpm ?: 0}", color = TelemetryAccent, fontSize = 27.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+            Text(text = "${data?.rpm ?: 0}", color = TelemetryAccent, fontSize = 27.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, modifier = Modifier.padding(top = 8.dp))
         }
-    }
-}
-
-@Composable
-fun SpeedRpmCard(data: TelemetryRecord?, isLandscape: Boolean, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .background(CardGradient, RoundedCornerShape(16.dp))
-            .border(1.dp, CardBorder, RoundedCornerShape(16.dp))
-            .padding(horizontal = 18.dp, vertical = 6.dp)
-            .widthIn(min = 120.dp)
-    ) {
-        Text(text = stringResource(R.string.speed), color = TelemetryOnSurfaceMuted, fontSize = 10.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
-        Text(text = "${data?.speed ?: 0}", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Bold)
-        Text(text = stringResource(R.string.unit_kmh), color = TelemetryOnSurfaceMuted, fontSize = 11.sp, modifier = Modifier.padding(bottom = 4.dp))
-        Text(text = stringResource(R.string.rpm), color = TelemetryOnSurfaceMuted, fontSize = 10.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
-        Text(text = "${data?.rpm ?: 0}", color = TelemetryAccent, fontSize = 20.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -559,7 +537,9 @@ fun GearReadout(data: TelemetryRecord?, fontSize: androidx.compose.ui.unit.TextU
             text = if (data?.gear == 0) "N" else "${data?.gear ?: 0}",
             color = if (data?.gear == 0) TelemetryAccent else Color.White,
             fontSize = fontSize,
-            fontWeight = FontWeight.ExtraBold
+            fontWeight = FontWeight.ExtraBold,
+            maxLines = 1,
+            softWrap = false
         )
     }
 }

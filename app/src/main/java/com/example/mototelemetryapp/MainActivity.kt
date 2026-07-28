@@ -1157,14 +1157,18 @@ private fun HomeLandscapeContent(
     onBackup: () -> Unit,
     onOpenRestore: () -> Unit
 ) {
+    // No verticalScroll here (unlike the portrait content): it would make the incoming height
+    // constraint unbounded, and the right column below relies on fillMaxHeight() + Center to
+    // vertically center its buttons - against infinity that resolves to wrap-content at the top
+    // instead, which is exactly the bug this avoids. The left column scrolls on its own instead,
+    // so a short landscape window still doesn't clip the quick-access grid.
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             Text(
                 text = stringResource(R.string.main_title),
                 color = Color.White,
