@@ -42,6 +42,8 @@
     <string name="stat_bike">BIKE</string>
     <string name="stat_gps">GPS</string>
     <string name="stat_max_lean">MAX LEAN</string>
+    <string name="stat_max_g_lat">MAX LAT G</string>
+    <string name="stat_max_g_lon">MAX LONG G</string>
     <string name="quick_access">QUICK ACCESS</string>
     <string name="fuel_range_label">range</string>
     <string name="today_ride">TODAY\'S RIDE</string>

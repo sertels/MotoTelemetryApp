@@ -158,6 +158,16 @@ fun SessionCard(
                 StatItem(label = stringResource(R.string.fuel), value = "%.2f L".format(session.totalFuelLiters))
                 StatItem(label = stringResource(R.string.stat_max_lean), value = "%.0f°".format(maxOf(session.maxLeanLeft, session.maxLeanRight)))
             }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Lateral and longitudinal G kept as two separate stats rather than one combined
+            // figure - a hard corner and a hard stop are different kinds of "riding hard" and
+            // collapsing them into one number would hide which one actually happened.
+            Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+                StatItem(label = stringResource(R.string.stat_max_g_lat), value = "%.2fg".format(session.maxGForceLat))
+                StatItem(label = stringResource(R.string.stat_max_g_lon), value = "%.2fg".format(session.maxGForceLon))
+            }
         }
     }
 

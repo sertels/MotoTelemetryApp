@@ -77,6 +77,8 @@ private fun readSessions(db: SQLiteDatabase): Map<Long, Session> {
                 maxLeanLeft = cursor.getFloat("maxLeanLeft"),
                 maxLeanRight = cursor.getFloat("maxLeanRight"),
                 maxCoolantTemp = cursor.getInt("maxCoolantTemp"),
+                maxGForceLat = cursor.getFloatOrDefault("maxGForceLat", 0f),
+                maxGForceLon = cursor.getFloatOrDefault("maxGForceLon", 0f),
                 startOdometer = cursor.getLong("startOdometer"),
                 endOdometer = cursor.getLong("endOdometer"),
                 totalFuelLiters = cursor.getFloat("totalFuelLiters"),
@@ -123,3 +125,10 @@ private fun Cursor.getInt(column: String) = getInt(getColumnIndexOrThrow(column)
 private fun Cursor.getFloat(column: String) = getFloat(getColumnIndexOrThrow(column))
 private fun Cursor.getDouble(column: String) = getDouble(getColumnIndexOrThrow(column))
 private fun Cursor.getString(column: String): String = getString(getColumnIndexOrThrow(column))
+
+// For columns added after older backups were already taken - getColumnIndexOrThrow would fail
+// the whole restore over one missing column, so this falls back to a default instead.
+private fun Cursor.getFloatOrDefault(column: String, default: Float): Float {
+    val index = getColumnIndex(column)
+    return if (index == -1) default else getFloat(index)
+}

@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
@@ -61,6 +62,11 @@ class TelemetryService : Service() {
     private val _maxLeanRight = MutableStateFlow(0f)
     val maxLeanRight = _maxLeanRight.asStateFlow()
     private var maxCoolantTemp: Int = 0
+    // Peak magnitude reached this ride in each axis, independent of each other (a hard stop and a
+    // hard corner are different kinds of "riding hard" and shouldn't be collapsed into one
+    // combined-magnitude number).
+    private var maxGForceLat: Float = 0f
+    private var maxGForceLon: Float = 0f
     private var totalFuelConsumedLiters: Float = 0f
     // A StateFlow (not a plain read-once Boolean) so DashboardViewModel can observe it directly
     // instead of racing: onStartCommand() and bindService()'s onServiceConnected() are both
@@ -289,6 +295,8 @@ class TelemetryService : Service() {
                 _maxLeanLeft.value = 0f
                 _maxLeanRight.value = 0f
                 maxCoolantTemp = 0
+                maxGForceLat = 0f
+                maxGForceLon = 0f
                 totalFuelConsumedLiters = 0f
                 lastLocation = null
 
@@ -326,6 +334,8 @@ class TelemetryService : Service() {
                         } else {
                             _maxLeanRight.value = max(_maxLeanRight.value, leanBike)
                         }
+                        maxGForceLat = max(maxGForceLat, abs(orientManager.gForceLat.value))
+                        maxGForceLon = max(maxGForceLon, abs(orientManager.gForceLon.value))
 
                         // Integrate fuel consumption (Rate is Liters/Hour, interval is 0.2s)
                         totalFuelConsumedLiters += (fuelRate / 3600f) * 0.2f
@@ -379,6 +389,8 @@ class TelemetryService : Service() {
             var recoveredMaxLeanLeft = 0f
             var recoveredMaxLeanRight = 0f
             var recoveredMaxCoolant = 0
+            var recoveredMaxGForceLat = 0f
+            var recoveredMaxGForceLon = 0f
             var recoveredFuelLiters = 0f
 
             for (r in records) {
@@ -389,6 +401,8 @@ class TelemetryService : Service() {
                 } else {
                     recoveredMaxLeanRight = max(recoveredMaxLeanRight, r.leanAngleBike)
                 }
+                recoveredMaxGForceLat = max(recoveredMaxGForceLat, abs(r.gForceLat))
+                recoveredMaxGForceLon = max(recoveredMaxGForceLon, abs(r.gForceLon))
                 recoveredFuelLiters += (r.fuelRate / 3600f) * 0.2f
 
                 if (r.latitude != 0.0 || r.longitude != 0.0) {
@@ -409,6 +423,8 @@ class TelemetryService : Service() {
                     maxLeanLeft = recoveredMaxLeanLeft,
                     maxLeanRight = recoveredMaxLeanRight,
                     maxCoolantTemp = recoveredMaxCoolant,
+                    maxGForceLat = recoveredMaxGForceLat,
+                    maxGForceLon = recoveredMaxGForceLon,
                     totalFuelLiters = recoveredFuelLiters
                 )
             )
@@ -445,6 +461,8 @@ class TelemetryService : Service() {
                             maxLeanLeft = _maxLeanLeft.value,
                             maxLeanRight = _maxLeanRight.value,
                             maxCoolantTemp = maxCoolantTemp,
+                            maxGForceLat = maxGForceLat,
+                            maxGForceLon = maxGForceLon,
                             totalFuelLiters = totalFuelConsumedLiters
                         )
                         finalSession?.let { 

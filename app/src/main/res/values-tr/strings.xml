@@ -42,6 +42,8 @@
     <string name="stat_bike">MOTOR</string>
     <string name="stat_gps">GPS</string>
     <string name="stat_max_lean">MAKS YATIŞ</string>
+    <string name="stat_max_g_lat">MAKS YANAL G</string>
+    <string name="stat_max_g_lon">MAKS BOYUNA G</string>
     <string name="quick_access">HIZLI ERİŞİM</string>
     <string name="fuel_range_label">menzil</string>
     <string name="today_ride">BUGÜNKÜ SÜRÜŞ</string>

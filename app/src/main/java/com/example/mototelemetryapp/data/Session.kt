@@ -15,6 +15,8 @@ data class Session(
     val maxLeanLeft: Float = 0f,
     val maxLeanRight: Float = 0f,
     val maxCoolantTemp: Int = 0,
+    val maxGForceLat: Float = 0f,
+    val maxGForceLon: Float = 0f,
     val startOdometer: Long = 0,
     val endOdometer: Long = 0,
     val totalFuelLiters: Float = 0f,
