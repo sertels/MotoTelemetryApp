@@ -156,15 +156,16 @@ fun SessionCard(
                 StatItem(label = stringResource(R.string.stat_bike), value = "%.1f km".format(session.totalDistanceBikeKm))
                 StatItem(label = stringResource(R.string.stat_gps), value = "%.1f km".format(session.totalDistanceGpsKm))
                 StatItem(label = stringResource(R.string.fuel), value = "%.2f L".format(session.totalFuelLiters))
-                StatItem(label = stringResource(R.string.stat_max_lean), value = "%.0f°".format(maxOf(session.maxLeanLeft, session.maxLeanRight)))
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Lateral and longitudinal G kept as two separate stats rather than one combined
-            // figure - a hard corner and a hard stop are different kinds of "riding hard" and
-            // collapsing them into one number would hide which one actually happened.
-            Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+            // Left/right lean and lateral/longitudinal G each kept as separate stats rather than
+            // combined into one magnitude - direction is part of what happened (a hard corner and
+            // a hard stop, or a left sweeper and a right one, aren't the same kind of "hard").
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                StatItem(label = stringResource(R.string.stat_max_lean_left), value = "%.0f°".format(session.maxLeanLeft))
+                StatItem(label = stringResource(R.string.stat_max_lean_right), value = "%.0f°".format(session.maxLeanRight))
                 StatItem(label = stringResource(R.string.stat_max_g_lat), value = "%.2fg".format(session.maxGForceLat))
                 StatItem(label = stringResource(R.string.stat_max_g_lon), value = "%.2fg".format(session.maxGForceLon))
             }

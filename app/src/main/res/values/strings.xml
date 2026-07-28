@@ -41,7 +41,8 @@
     <string name="chart_legend">Speed (White) &amp; RPM/100 (Blue)</string>
     <string name="stat_bike">BIKE</string>
     <string name="stat_gps">GPS</string>
-    <string name="stat_max_lean">MAX LEAN</string>
+    <string name="stat_max_lean_left">MAX L</string>
+    <string name="stat_max_lean_right">MAX R</string>
     <string name="stat_max_g_lat">MAX LAT G</string>
     <string name="stat_max_g_lon">MAX LONG G</string>
     <string name="quick_access">QUICK ACCESS</string>
