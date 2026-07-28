@@ -90,6 +90,10 @@
     <string name="settings_section_tracking">KAYIT</string>
     <string name="settings_section_battery">PİL</string>
     <string name="settings_section_language">DİL</string>
+    <string name="settings_section_diagnostics">TANILAMA</string>
+    <string name="share_diagnostic_log">Tanılama Günlüğünü Paylaş</string>
+    <string name="share_diagnostic_log_hint">Bağlantı ve kayıt hatalarının dönen bir günlüğü - gerçek bir sürüşten sonra ne olduğunu anlamak için kullanışlıdır.</string>
+    <string name="diagnostic_log_empty">Henüz tanılama günlüğü yok - hiçbir şey kaydedilmedi.</string>
     <string name="battery_optimization_exempt">Kısıtlamasız pil kullanımına zaten izin verildi.</string>
     <string name="restore_drive">Geri Yükle</string>
     <string name="restore_started">Geri yükleniyor…</string>

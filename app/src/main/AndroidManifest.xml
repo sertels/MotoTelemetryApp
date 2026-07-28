@@ -47,6 +47,17 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Lets the diagnostic log file (app-private storage) be shared via a content:// URI -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- OBD adaptörü Bluetooth üzerinden bağlandığında, ayar açıksa kaydı otomatik başlatır -->
         <receiver
             android:name=".ObdAutoStartReceiver"

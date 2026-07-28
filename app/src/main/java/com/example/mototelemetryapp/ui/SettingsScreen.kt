@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
@@ -48,6 +49,7 @@ fun SettingsScreen(
     onRequestBatteryOptExemption: () -> Unit,
     currentLocaleTag: String,
     onLanguageChange: (String) -> Unit,
+    onShareDiagnosticLog: () -> Unit,
     showDebugSection: Boolean = false,
     simulateObd: Boolean = false,
     onSimulateObdChange: (Boolean) -> Unit = {}
@@ -128,6 +130,29 @@ fun SettingsScreen(
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(28.dp))
+        SettingsSectionLabel(stringResource(R.string.settings_section_diagnostics))
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF161616), RoundedCornerShape(10.dp))
+                .border(1.dp, Color(0xFF232323), RoundedCornerShape(10.dp))
+                .clickable(onClick = onShareDiagnosticLog)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(imageVector = Icons.Default.BugReport, contentDescription = null, tint = TelemetryOnSurfaceMuted, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(text = stringResource(R.string.share_diagnostic_log), color = TelemetryOnSurface, fontSize = 12.sp)
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = stringResource(R.string.share_diagnostic_log_hint),
+            color = TelemetryOnSurfaceMuted,
+            fontSize = 10.sp
+        )
 
         // Debug builds only (see BuildConfig.DEBUG at the call site) - the simulator is hard-gated
         // in isRideSimulationEnabled() too, so a release build ignores the stored value regardless.

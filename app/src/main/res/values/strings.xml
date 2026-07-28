@@ -90,6 +90,10 @@
     <string name="settings_section_tracking">TRACKING</string>
     <string name="settings_section_battery">BATTERY</string>
     <string name="settings_section_language">LANGUAGE</string>
+    <string name="settings_section_diagnostics">DIAGNOSTICS</string>
+    <string name="share_diagnostic_log">Share Diagnostic Log</string>
+    <string name="share_diagnostic_log_hint">A rolling log of connection and tracking errors, useful for figuring out what happened after a real-world ride.</string>
+    <string name="diagnostic_log_empty">No diagnostic log yet - nothing has been recorded.</string>
     <string name="battery_optimization_exempt">Unrestricted battery usage is already allowed.</string>
     <string name="restore_drive">Restore</string>
     <string name="restore_started">Restoring…</string>

@@ -126,7 +126,7 @@ class BluetoothOBDManager(
         val adapter = bluetoothManager.adapter
 
         if (adapter == null || !adapter.isEnabled) {
-            Log.e(tag, "Bluetooth kapalı veya desteklenmiyor.")
+            DiagnosticLog.e(tag, "Bluetooth kapalı veya desteklenmiyor.")
             return@withContext false
         }
 
@@ -138,7 +138,7 @@ class BluetoothOBDManager(
         }
 
         if (obdDevice == null) {
-            Log.e(tag, "Eşleşmiş OBD2 cihazı bulunamadı.")
+            DiagnosticLog.e(tag, "Eşleşmiş OBD2 cihazı bulunamadı.")
             return@withContext false
         }
 
@@ -175,10 +175,10 @@ class BluetoothOBDManager(
                 return@withContext true
             }
         } catch (e: IOException) {
-            Log.e(tag, "Bağlantı hatası: ${e.message}")
+            DiagnosticLog.e(tag, "Bağlantı hatası: ${e.message}")
             disconnect()
         } catch (e: SecurityException) {
-            Log.e(tag, "Bluetooth izni eksik: ${e.message}")
+            DiagnosticLog.e(tag, "Bluetooth izni eksik: ${e.message}")
             disconnect()
         }
         return@withContext false
@@ -210,7 +210,7 @@ class BluetoothOBDManager(
             outputStream?.write((cmd + "\r").toByteArray())
             outputStream?.flush()
         } catch (e: IOException) {
-            Log.e(tag, "Komut gönderme hatası: ${e.message}")
+            DiagnosticLog.e(tag, "Komut gönderme hatası: ${e.message}")
         }
     }
 
@@ -229,9 +229,9 @@ class BluetoothOBDManager(
                     response.append(part)
                     if (part.contains(">")) break
                 }
-            } ?: Log.w(tag, "Read response timeout")
+            } ?: DiagnosticLog.w(tag, "Read response timeout")
         } catch (e: IOException) {
-            Log.e(tag, "Okuma hatası: ${e.message}")
+            DiagnosticLog.e(tag, "Okuma hatası: ${e.message}")
         }
         return response.toString().trim().replace(">", "")
     }
@@ -251,7 +251,7 @@ class BluetoothOBDManager(
 
                     delay(100.milliseconds)
                 } catch (e: Exception) {
-                    Log.e(tag, "Error in data loop: ${e.message}", e)
+                    DiagnosticLog.e(tag, "Error in data loop: ${e.message}", e)
                     delay(500.milliseconds) // Wait before retrying
                 }
             }
@@ -567,7 +567,7 @@ class BluetoothOBDManager(
             currentHeader = null
             Log.d(tag, "OBD2 Bağlantısı kesildi.")
         } catch (e: IOException) {
-            Log.e(tag, "Kapatma hatası: ${e.message}")
+            DiagnosticLog.e(tag, "Kapatma hatası: ${e.message}")
         }
     }
 

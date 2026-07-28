@@ -105,6 +105,7 @@ class MainActivity : AppCompatActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        DiagnosticLog.init(this)
         setContent {
             val context = LocalContext.current
             val navController = rememberNavController()
@@ -647,6 +648,14 @@ class MainActivity : AppCompatActivity() {
                                     onLanguageChange = { tag ->
                                         val appLocale: LocaleListCompat = LocaleListCompat.forLanguageTags(tag)
                                         AppCompatDelegate.setApplicationLocales(appLocale)
+                                    },
+                                    onShareDiagnosticLog = {
+                                        val intent = DiagnosticLog.shareIntent(context)
+                                        if (intent != null) {
+                                            context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_diagnostic_log)))
+                                        } else {
+                                            Toast.makeText(context, R.string.diagnostic_log_empty, Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 )
                             }

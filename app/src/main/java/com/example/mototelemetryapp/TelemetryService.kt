@@ -134,6 +134,7 @@ class TelemetryService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        DiagnosticLog.init(this)
         createNotificationChannel()
 
         // Initialize components
@@ -142,7 +143,7 @@ class TelemetryService : Service() {
         // sit at zero. See SimulatedRide, which keeps the two consistent.
         val simulate = isRideSimulationEnabled(this)
         if (simulate) {
-            Log.w("TelemetryService", "Ride simulation enabled - telemetry below is synthetic.")
+            DiagnosticLog.w("TelemetryService", "Ride simulation enabled - telemetry below is synthetic.")
         }
         bluetoothOBDManager = if (simulate) {
             SimulatedObdSource(serviceScope)
@@ -269,17 +270,17 @@ class TelemetryService : Service() {
         serviceScope.launch {
             try {
                 val database = db ?: run {
-                    Log.e("TelemetryService", "Database not initialized")
+                    DiagnosticLog.e("TelemetryService", "Database not initialized")
                     return@launch
                 }
                 
                 val obdManager = bluetoothOBDManager ?: run {
-                    Log.e("TelemetryService", "BluetoothOBDManager not initialized")
+                    DiagnosticLog.e("TelemetryService", "BluetoothOBDManager not initialized")
                     return@launch
                 }
                 
                 val orientManager = orientationManager ?: run {
-                    Log.e("TelemetryService", "OrientationManager not initialized")
+                    DiagnosticLog.e("TelemetryService", "OrientationManager not initialized")
                     return@launch
                 }
 
@@ -314,7 +315,7 @@ class TelemetryService : Service() {
                 if (connected) {
                     startOdometer = (obdManager.obdData.value["ODOMETER"] ?: 0).toLong()
                 } else {
-                    Log.e("TelemetryService", "OBD2 connection failed; continuing with phone sensors only.")
+                    DiagnosticLog.e("TelemetryService", "OBD2 connection failed; continuing with phone sensors only.")
                 }
 
                 while (isActive) {
@@ -365,12 +366,12 @@ class TelemetryService : Service() {
                         database.telemetryDao().insertRecord(record)
                         delay(200.milliseconds)
                     } catch (e: Exception) {
-                        Log.e("TelemetryService", "Error in telemetry loop: ${e.message}", e)
+                        DiagnosticLog.e("TelemetryService", "Error in telemetry loop: ${e.message}", e)
                         delay(1000.milliseconds) // Wait before retrying
                     }
                 }
             } catch (e: Exception) {
-                Log.e("TelemetryService", "Fatal error in startTelemetryTracking: ${e.message}", e)
+                DiagnosticLog.e("TelemetryService", "Fatal error in startTelemetryTracking: ${e.message}", e)
             }
         }
     }
@@ -439,7 +440,7 @@ class TelemetryService : Service() {
             try {
                 unregisterReceiver(it)
             } catch (e: IllegalArgumentException) {
-                Log.w("TelemetryService", "OBD link receiver already unregistered")
+                DiagnosticLog.w("TelemetryService", "OBD link receiver already unregistered")
             }
         }
 
@@ -469,7 +470,7 @@ class TelemetryService : Service() {
                             database.telemetryDao().updateSession(it)
                         }
                     } catch (e: Exception) {
-                        Log.e("TelemetryService", "Error updating session: ${e.message}", e)
+                        DiagnosticLog.e("TelemetryService", "Error updating session: ${e.message}", e)
                     }
                 }
             }
@@ -480,7 +481,7 @@ class TelemetryService : Service() {
             // was never paired with a removeLocationUpdates anywhere.
             locationSource?.stop()
         } catch (e: Exception) {
-            Log.e("TelemetryService", "Error in onDestroy: ${e.message}", e)
+            DiagnosticLog.e("TelemetryService", "Error in onDestroy: ${e.message}", e)
         } finally {
             serviceScope.cancel()
         }
