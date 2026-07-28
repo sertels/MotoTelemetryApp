@@ -23,16 +23,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalConfiguration
@@ -49,8 +46,6 @@ import com.example.mototelemetryapp.data.TelemetryRecord
 import com.example.mototelemetryapp.ui.theme.TelemetryAccent
 import com.example.mototelemetryapp.ui.theme.TelemetryOnSurfaceMuted
 import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.sin
 
 private val CardBorder = Color(0xFF262626)
 private val CardGradient = Brush.verticalGradient(listOf(Color(0xFF1C1C1C), Color(0xFF161616)))
@@ -65,7 +60,9 @@ fun DashboardScreen(
     data: TelemetryRecord?,
     leanSource: LeanSource,
     onToggleSource: () -> Unit,
-    onCalibrate: () -> Unit
+    onCalibrate: () -> Unit,
+    maxLeanLeft: Float = 0f,
+    maxLeanRight: Float = 0f
 ) {
     val currentLean = if (leanSource == LeanSource.PHONE) data?.leanAnglePhone else data?.leanAngleBike
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -110,9 +107,9 @@ fun DashboardScreen(
                 leanSource = leanSource,
                 onToggleSource = onToggleSource,
                 onCalibrate = onCalibrate,
-                circleSize = 144.dp,
-                canvasSize = 116.dp,
-                overlayReadout = true,
+                maxLeanLeft = maxLeanLeft,
+                maxLeanRight = maxLeanRight,
+                circleSize = 116.dp,
                 modifier = Modifier.align(Alignment.CenterVertically)
             )
             BarsCard(
@@ -149,9 +146,9 @@ fun DashboardScreen(
                 leanSource = leanSource,
                 onToggleSource = onToggleSource,
                 onCalibrate = onCalibrate,
-                circleSize = 150.dp,
-                canvasSize = 124.dp,
-                overlayReadout = false
+                maxLeanLeft = maxLeanLeft,
+                maxLeanRight = maxLeanRight,
+                circleSize = 150.dp
             )
             Spacer(modifier = Modifier.height(8.dp))
             BarsCard(data, modifier = Modifier.fillMaxWidth())
@@ -579,135 +576,91 @@ fun VerticalDivider() {
     )
 }
 
+// Ring gauge: a full-circle track with a colored progress arc from top toward the current lean
+// (clamped to +-LEAN_LIMIT_DEG, same "bike is basically on the floor past this" reasoning as the
+// old needle dial's tick range) and a big center readout, styled after extra_info/center.png.
+// Side labels show the max lean reached this ride, in each direction, next to the ring.
+private const val LEAN_LIMIT_DEG = 60f
+
 @Composable
 fun LeanGauge(
     currentLean: Float?,
     leanSource: LeanSource,
     onToggleSource: () -> Unit,
     onCalibrate: () -> Unit,
+    maxLeanLeft: Float,
+    maxLeanRight: Float,
     circleSize: Dp,
-    canvasSize: Dp,
-    overlayReadout: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val lean = (currentLean ?: 0f).coerceIn(-60f, 60f)
-    val tickAngles = (-60..60 step 10).toList()
-    val labelAngles = listOf(-60, -30, 0, 30, 60)
+    val lean = (currentLean ?: 0f).coerceIn(-LEAN_LIMIT_DEG, LEAN_LIMIT_DEG)
+    val nearLimit = abs(currentLean ?: 0f) >= LEAN_LIMIT_DEG - 3f
+    val arcColor = if (nearLimit) Color(0xFFFF1744) else Color(0xFF00B4FF)
 
-    Box(
-        modifier = modifier
-            .size(circleSize)
-            .clip(CircleShape)
-            .background(Brush.radialGradient(listOf(Color(0xFF1C1C1C), Color(0xFF141414))))
-            .border(1.dp, CardBorder, CircleShape)
-            .clickable { onToggleSource() },
-        contentAlignment = Alignment.Center
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Box(modifier = Modifier.size(canvasSize)) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val radius = size.minDimension / 2f
-                val tickOuter = radius * 0.98f
-                val tickInnerMinor = radius * 0.86f
-                val tickInnerMajor = radius * 0.80f
-
-                drawCircle(color = Color(0xFF262626), radius = radius * 0.92f, style = Stroke(width = 1.5.dp.toPx()))
-
-                tickAngles.forEach { angleDeg ->
-                    val isMajor = angleDeg % 30 == 0
-                    val isLimit = angleDeg == -60 || angleDeg == 60
-                    val rad = Math.toRadians((-90 + angleDeg).toDouble())
-                    val cosA = cos(rad).toFloat()
-                    val sinA = sin(rad).toFloat()
-                    val innerR = if (isMajor) tickInnerMajor else tickInnerMinor
-                    drawLine(
-                        color = if (isLimit) Color(0xFFFF1744) else if (isMajor) Color(0xFFAAAAAA) else Color(0xFF444444),
-                        start = Offset(center.x + innerR * cosA, center.y + innerR * sinA),
-                        end = Offset(center.x + tickOuter * cosA, center.y + tickOuter * sinA),
-                        strokeWidth = if (isMajor) 2.5.dp.toPx() else 1.5.dp.toPx(),
-                        cap = StrokeCap.Round
-                    )
-                }
-
+        MaxLeanLabel(maxLeanLeft, stringResource(R.string.max_lean_left))
+        Box(
+            modifier = Modifier
+                .size(circleSize)
+                .clip(CircleShape)
+                .background(Brush.radialGradient(listOf(Color(0xFF1C1C1C), Color(0xFF141414))))
+                .border(1.dp, CardBorder, CircleShape)
+                .clickable { onToggleSource() },
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+                val strokeWidth = 7.dp.toPx()
+                val ringRadius = size.minDimension / 2f - strokeWidth / 2f
+                drawCircle(color = Color(0xFF262626), radius = ringRadius, style = Stroke(width = strokeWidth))
                 if (abs(lean) > 0.5f) {
                     drawArc(
-                        color = Color(0xFF00B4FF),
+                        color = arcColor,
                         startAngle = -90f,
                         sweepAngle = lean,
                         useCenter = false,
-                        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round),
-                        topLeft = Offset(center.x - tickInnerMajor, center.y - tickInnerMajor),
-                        size = Size(tickInnerMajor * 2, tickInnerMajor * 2)
+                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                        topLeft = Offset(center.x - ringRadius, center.y - ringRadius),
+                        size = Size(ringRadius * 2, ringRadius * 2)
                     )
                 }
             }
-            labelAngles.forEach { angleDeg ->
-                val rad = Math.toRadians((-90 + angleDeg).toDouble())
-                val bx = (cos(rad) * 0.62).toFloat()
-                val by = (sin(rad) * 0.62).toFloat()
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "${abs(angleDeg)}",
-                    color = Color(0xFF8A8A8A),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.align(BiasAlignment(bx, by))
+                    text = "${abs(currentLean?.toInt() ?: 0)}°",
+                    color = Color.White,
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.ExtraBold
                 )
+                Spacer(modifier = Modifier.height(2.dp))
+                LeanSourceRow(leanSource, onCalibrate)
             }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .rotate(lean)
-            ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    // Kite-shaped needle matching the design's SVG path
-                    // "M75 22 L81 78 L75 88 L69 78 Z" in a 150x150 viewBox, expressed here
-                    // as fractions of this canvas's own size so it scales with circleSize.
-                    val needlePath = Path().apply {
-                        moveTo(center.x, center.y - 0.3533f * size.height)
-                        lineTo(center.x + 0.04f * size.width, center.y + 0.02f * size.height)
-                        lineTo(center.x, center.y + 0.0867f * size.height)
-                        lineTo(center.x - 0.04f * size.width, center.y + 0.02f * size.height)
-                        close()
-                    }
-                    drawPath(path = needlePath, color = Color(0xFFE8E8E8))
-                    drawCircle(color = Color(0xFF1C1C1C), radius = 9.dp.toPx())
-                    drawCircle(color = Color(0xFFE8E8E8), radius = 6.dp.toPx())
-                }
-            }
+            Icon(
+                imageVector = Icons.Default.SwapHoriz,
+                contentDescription = null,
+                tint = Color.Gray.copy(alpha = 0.45f),
+                modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).size(14.dp)
+            )
         }
-        Icon(
-            imageVector = Icons.Default.SwapHoriz,
-            contentDescription = null,
-            tint = Color.Gray.copy(alpha = 0.45f),
-            modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).size(16.dp)
-        )
-        if (overlayReadout) {
-            Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = circleSize * 0.1f)) {
-                LeanReadoutBadge(currentLean, leanSource, onCalibrate, compact = true)
-            }
-        }
-    }
-    if (!overlayReadout) {
-        Spacer(modifier = Modifier.height(12.dp))
-        LeanReadoutBadge(currentLean, leanSource, onCalibrate, compact = false)
+        MaxLeanLabel(maxLeanRight, stringResource(R.string.max_lean_right))
     }
 }
 
 @Composable
-fun LeanReadoutBadge(currentLean: Float?, leanSource: LeanSource, onCalibrate: () -> Unit, compact: Boolean) {
-    Row(
-        modifier = Modifier
-            .background(BadgeBg, RoundedCornerShape(100.dp))
-            .border(1.dp, CardBorder, RoundedCornerShape(100.dp))
-            .padding(horizontal = if (compact) 10.dp else 14.dp, vertical = if (compact) 3.dp else 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "${currentLean?.toInt() ?: 0}°",
-            color = Color.White,
-            fontSize = if (compact) 13.sp else 19.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.width(6.dp))
+private fun MaxLeanLabel(value: Float, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(text = label, color = TelemetryOnSurfaceMuted, fontSize = 9.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(text = "${value.toInt()}°", color = Color(0xFFCCCCCC), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun LeanSourceRow(leanSource: LeanSource, onCalibrate: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(
             imageVector = if (leanSource == LeanSource.PHONE) Icons.Default.PhoneAndroid else Icons.Default.TwoWheeler,
             contentDescription = if (leanSource == LeanSource.PHONE) {
@@ -716,16 +669,15 @@ fun LeanReadoutBadge(currentLean: Float?, leanSource: LeanSource, onCalibrate: (
                 stringResource(R.string.lean_source_bike)
             },
             tint = TelemetryOnSurfaceMuted,
-            modifier = Modifier.size(if (compact) 14.dp else 18.dp)
+            modifier = Modifier.size(13.dp)
         )
         if (leanSource == LeanSource.PHONE) {
-            Spacer(modifier = Modifier.width(if (compact) 2.dp else 4.dp))
-            IconButton(onClick = onCalibrate, modifier = Modifier.size(if (compact) 20.dp else 26.dp)) {
+            IconButton(onClick = onCalibrate, modifier = Modifier.size(20.dp)) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
                     contentDescription = stringResource(R.string.calibrate_angle),
                     tint = TelemetryOnSurfaceMuted,
-                    modifier = Modifier.size(if (compact) 13.dp else 16.dp)
+                    modifier = Modifier.size(12.dp)
                 )
             }
         }

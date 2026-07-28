@@ -478,12 +478,16 @@ class MainActivity : AppCompatActivity() {
                                     val telemetryFlow = dashboardViewModel.getTelemetryFlow()
                                     val currentData by (telemetryFlow?.collectAsState(initial = null) ?: remember { mutableStateOf(null) })
                                     val leanSource by dashboardViewModel.leanSource.collectAsState()
+                                    val maxLeanLeft by dashboardViewModel.maxLeanLeft.collectAsState()
+                                    val maxLeanRight by dashboardViewModel.maxLeanRight.collectAsState()
 
                                     DashboardScreen(
                                         data = currentData,
                                         leanSource = leanSource,
                                         onToggleSource = { dashboardViewModel.toggleLeanSource() },
-                                        onCalibrate = { dashboardViewModel.calibrateLeanAngle() }
+                                        onCalibrate = { dashboardViewModel.calibrateLeanAngle() },
+                                        maxLeanLeft = maxLeanLeft,
+                                        maxLeanRight = maxLeanRight
                                     )
                                 } else {
                                     val sessions by dashboardViewModel.sessions.collectAsState()

@@ -28,6 +28,8 @@
     <string name="delete_session">Delete session</string>
     <string name="lean_source_phone">PHONE</string>
     <string name="lean_source_bike">BIKE</string>
+    <string name="max_lean_left">MAX L</string>
+    <string name="max_lean_right">MAX R</string>
     <string name="last_ride">LAST RIDE</string>
     <string name="fuel">FUEL</string>
     <string name="service">SERVICE</string>

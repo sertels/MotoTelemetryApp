@@ -52,8 +52,14 @@ class TelemetryService : Service() {
     private var totalGpsDistanceMeters: Float = 0f
     private var startOdometer: Long = 0
     private var maxSpeed: Int = 0
-    private var maxLeanLeft: Float = 0f
-    private var maxLeanRight: Float = 0f
+    // StateFlows (not plain vars) so the lean gauge can show "max this ride" live rather than
+    // only after the session is saved. Reset at the top of every startTelemetryTracking() call -
+    // this service instance can be started and stopped multiple times, and these previously never
+    // reset between rides.
+    private val _maxLeanLeft = MutableStateFlow(0f)
+    val maxLeanLeft = _maxLeanLeft.asStateFlow()
+    private val _maxLeanRight = MutableStateFlow(0f)
+    val maxLeanRight = _maxLeanRight.asStateFlow()
     private var maxCoolantTemp: Int = 0
     private var totalFuelConsumedLiters: Float = 0f
     // A StateFlow (not a plain read-once Boolean) so DashboardViewModel can observe it directly
@@ -275,6 +281,17 @@ class TelemetryService : Service() {
                 // was killed before onDestroy() could run (e.g. backgrounded + OS/battery kill).
                 recoverOrphanedSessions(database)
 
+                // This service instance can be started and stopped more than once (Start/Stop from
+                // the UI without killing the process), so the aggregates from a previous ride must
+                // not leak into this one.
+                totalGpsDistanceMeters = 0f
+                maxSpeed = 0
+                _maxLeanLeft.value = 0f
+                _maxLeanRight.value = 0f
+                maxCoolantTemp = 0
+                totalFuelConsumedLiters = 0f
+                lastLocation = null
+
                 // 1. Create a new Session
                 val startTime = System.currentTimeMillis()
                 val dateStr = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(startTime))
@@ -304,7 +321,11 @@ class TelemetryService : Service() {
                         // Update aggregates
                         maxSpeed = max(maxSpeed, speed)
                         maxCoolantTemp = max(maxCoolantTemp, coolant)
-                        if (leanBike < 0) maxLeanLeft = max(maxLeanLeft, -leanBike) else maxLeanRight = max(maxLeanRight, leanBike)
+                        if (leanBike < 0) {
+                            _maxLeanLeft.value = max(_maxLeanLeft.value, -leanBike)
+                        } else {
+                            _maxLeanRight.value = max(_maxLeanRight.value, leanBike)
+                        }
 
                         // Integrate fuel consumption (Rate is Liters/Hour, interval is 0.2s)
                         totalFuelConsumedLiters += (fuelRate / 3600f) * 0.2f
@@ -421,8 +442,8 @@ class TelemetryService : Service() {
                             totalDistanceGpsKm = totalGpsDistanceMeters / 1000f,
                             totalDistanceBikeKm = if (endOdometer > startOdometer) (endOdometer - startOdometer).toFloat() else 0f,
                             maxSpeed = maxSpeed,
-                            maxLeanLeft = maxLeanLeft,
-                            maxLeanRight = maxLeanRight,
+                            maxLeanLeft = _maxLeanLeft.value,
+                            maxLeanRight = _maxLeanRight.value,
                             maxCoolantTemp = maxCoolantTemp,
                             totalFuelLiters = totalFuelConsumedLiters
                         )

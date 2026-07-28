@@ -28,6 +28,8 @@
     <string name="delete_session">Kaydı sil</string>
     <string name="lean_source_phone">TEL</string>
     <string name="lean_source_bike">MOTO</string>
+    <string name="max_lean_left">MAKS SOL</string>
+    <string name="max_lean_right">MAKS SAĞ</string>
     <string name="last_ride">SON SÜRÜŞ</string>
     <string name="fuel">YAKIT</string>
     <string name="service">BAKIM</string>

@@ -260,6 +260,15 @@ class DashboardViewModel : ViewModel() {
     private val _obdSimulated = MutableStateFlow(false)
     val obdSimulated = _obdSimulated.asStateFlow()
 
+    // Max lean this ride, live - not just the value saved to the session at the end.
+    private val _maxLeanLeft = MutableStateFlow(0f)
+    val maxLeanLeft = _maxLeanLeft.asStateFlow()
+    private var maxLeanLeftCollectJob: Job? = null
+
+    private val _maxLeanRight = MutableStateFlow(0f)
+    val maxLeanRight = _maxLeanRight.asStateFlow()
+    private var maxLeanRightCollectJob: Job? = null
+
     private var trackingActiveCollectJob: Job? = null
 
     private val connection = object : ServiceConnection {
@@ -305,6 +314,14 @@ class DashboardViewModel : ViewModel() {
             obdRawDataCollectJob = telemetryService?.obdRawData?.let { flow ->
                 viewModelScope.launch { flow.collect { _obdRawData.value = it } }
             }
+            maxLeanLeftCollectJob?.cancel()
+            maxLeanLeftCollectJob = telemetryService?.maxLeanLeft?.let { flow ->
+                viewModelScope.launch { flow.collect { _maxLeanLeft.value = it } }
+            }
+            maxLeanRightCollectJob?.cancel()
+            maxLeanRightCollectJob = telemetryService?.maxLeanRight?.let { flow ->
+                viewModelScope.launch { flow.collect { _maxLeanRight.value = it } }
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -327,6 +344,11 @@ class DashboardViewModel : ViewModel() {
             _obdDtcCodes.value = emptyList()
             obdRawDataCollectJob?.cancel()
             _obdRawData.value = emptyMap()
+            maxLeanLeftCollectJob?.cancel()
+            maxLeanRightCollectJob?.cancel()
+            // Left as-is (not reset to 0) on disconnect, same reasoning as _isTrackingActive: a
+            // ride keeps recording in the background even while the UI is briefly unbound, so the
+            // last-known max lean shouldn't flash back to zero.
         }
     }
 
@@ -389,6 +411,8 @@ class DashboardViewModel : ViewModel() {
         _obdDtcCodes.value = emptyList()
         obdRawDataCollectJob?.cancel()
         _obdRawData.value = emptyMap()
+        maxLeanLeftCollectJob?.cancel()
+        maxLeanRightCollectJob?.cancel()
     }
 
     // Servis bağlıyken akışı expose et
