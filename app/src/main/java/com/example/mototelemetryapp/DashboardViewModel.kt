@@ -269,6 +269,15 @@ class DashboardViewModel : ViewModel() {
     val maxLeanRight = _maxLeanRight.asStateFlow()
     private var maxLeanRightCollectJob: Job? = null
 
+    // Max G this ride, live - same reasoning as maxLeanLeft/Right above.
+    private val _maxGForceLat = MutableStateFlow(0f)
+    val maxGForceLat = _maxGForceLat.asStateFlow()
+    private var maxGForceLatCollectJob: Job? = null
+
+    private val _maxGForceLon = MutableStateFlow(0f)
+    val maxGForceLon = _maxGForceLon.asStateFlow()
+    private var maxGForceLonCollectJob: Job? = null
+
     private var trackingActiveCollectJob: Job? = null
 
     private val connection = object : ServiceConnection {
@@ -322,6 +331,14 @@ class DashboardViewModel : ViewModel() {
             maxLeanRightCollectJob = telemetryService?.maxLeanRight?.let { flow ->
                 viewModelScope.launch { flow.collect { _maxLeanRight.value = it } }
             }
+            maxGForceLatCollectJob?.cancel()
+            maxGForceLatCollectJob = telemetryService?.maxGForceLat?.let { flow ->
+                viewModelScope.launch { flow.collect { _maxGForceLat.value = it } }
+            }
+            maxGForceLonCollectJob?.cancel()
+            maxGForceLonCollectJob = telemetryService?.maxGForceLon?.let { flow ->
+                viewModelScope.launch { flow.collect { _maxGForceLon.value = it } }
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -346,9 +363,11 @@ class DashboardViewModel : ViewModel() {
             _obdRawData.value = emptyMap()
             maxLeanLeftCollectJob?.cancel()
             maxLeanRightCollectJob?.cancel()
+            maxGForceLatCollectJob?.cancel()
+            maxGForceLonCollectJob?.cancel()
             // Left as-is (not reset to 0) on disconnect, same reasoning as _isTrackingActive: a
             // ride keeps recording in the background even while the UI is briefly unbound, so the
-            // last-known max lean shouldn't flash back to zero.
+            // last-known max lean/G shouldn't flash back to zero.
         }
     }
 
@@ -413,6 +432,8 @@ class DashboardViewModel : ViewModel() {
         _obdRawData.value = emptyMap()
         maxLeanLeftCollectJob?.cancel()
         maxLeanRightCollectJob?.cancel()
+        maxGForceLatCollectJob?.cancel()
+        maxGForceLonCollectJob?.cancel()
     }
 
     // Servis bağlıyken akışı expose et

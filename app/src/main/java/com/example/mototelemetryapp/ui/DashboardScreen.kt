@@ -62,7 +62,9 @@ fun DashboardScreen(
     onToggleSource: () -> Unit,
     onCalibrate: () -> Unit,
     maxLeanLeft: Float = 0f,
-    maxLeanRight: Float = 0f
+    maxLeanRight: Float = 0f,
+    maxGForceLat: Float = 0f,
+    maxGForceLon: Float = 0f
 ) {
     val currentLean = if (leanSource == LeanSource.PHONE) data?.leanAnglePhone else data?.leanAngleBike
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -112,7 +114,7 @@ fun DashboardScreen(
                         maxLeanRight = maxLeanRight,
                         circleSize = 170.dp
                     )
-                    BarsCard(data, compact = true, modifier = Modifier.weight(1f))
+                    BarsCard(data, maxGForceLat = maxGForceLat, maxGForceLon = maxGForceLon, compact = true, modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -146,7 +148,7 @@ fun DashboardScreen(
                 circleSize = 150.dp
             )
             Spacer(modifier = Modifier.height(8.dp))
-            BarsCard(data, modifier = Modifier.fillMaxWidth())
+            BarsCard(data, maxGForceLat = maxGForceLat, maxGForceLon = maxGForceLon, modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -665,7 +667,13 @@ private fun LeanSourceRow(leanSource: LeanSource, onCalibrate: () -> Unit) {
 }
 
 @Composable
-fun BarsCard(data: TelemetryRecord?, compact: Boolean = false, modifier: Modifier = Modifier) {
+fun BarsCard(
+    data: TelemetryRecord?,
+    maxGForceLat: Float? = null,
+    maxGForceLon: Float? = null,
+    compact: Boolean = false,
+    modifier: Modifier = Modifier
+) {
     Column(
         modifier = modifier
             .background(Color(0xFF161616), RoundedCornerShape(16.dp))
@@ -673,8 +681,8 @@ fun BarsCard(data: TelemetryRecord?, compact: Boolean = false, modifier: Modifie
             .padding(horizontal = 16.dp, vertical = if (compact) 6.dp else 10.dp),
         verticalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 8.dp)
     ) {
-        GForceBar(label = stringResource(R.string.g_force_lat), value = data?.gForceLat ?: 0f, color = TelemetryAccent, compact = compact)
-        GForceBar(label = stringResource(R.string.g_force_lon), value = data?.gForceLon ?: 0f, color = Color(0xFFFF9100), compact = compact)
+        GForceBar(label = stringResource(R.string.g_force_lat), value = data?.gForceLat ?: 0f, maxValue = maxGForceLat, color = TelemetryAccent, compact = compact)
+        GForceBar(label = stringResource(R.string.g_force_lon), value = data?.gForceLon ?: 0f, maxValue = maxGForceLon, color = Color(0xFFFF9100), compact = compact)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -688,12 +696,18 @@ fun BarsCard(data: TelemetryRecord?, compact: Boolean = false, modifier: Modifie
 }
 
 @Composable
-fun GForceBar(label: String, value: Float, color: Color, maxG: Float = 1.2f, compact: Boolean = false) {
+fun GForceBar(label: String, value: Float, maxValue: Float? = null, color: Color, maxG: Float = 1.2f, compact: Boolean = false) {
     val animatedValue by animateFloatAsState(targetValue = (abs(value) / maxG).coerceIn(0f, 1f))
     Column {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(text = label, color = TelemetryOnSurfaceMuted, fontSize = 10.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
-            Text(text = "%.2f g".format(value), color = Color(0xFFCCCCCC), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (maxValue != null) {
+                    Text(text = "max %.2fg".format(maxValue), color = TelemetryOnSurfaceMuted, fontSize = if (compact) 8.sp else 9.sp)
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
+                Text(text = "%.2f g".format(value), color = Color(0xFFCCCCCC), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            }
         }
         Spacer(modifier = Modifier.height(if (compact) 3.dp else 5.dp))
         Box(

@@ -481,6 +481,8 @@ class MainActivity : AppCompatActivity() {
                                     val leanSource by dashboardViewModel.leanSource.collectAsState()
                                     val maxLeanLeft by dashboardViewModel.maxLeanLeft.collectAsState()
                                     val maxLeanRight by dashboardViewModel.maxLeanRight.collectAsState()
+                                    val maxGForceLat by dashboardViewModel.maxGForceLat.collectAsState()
+                                    val maxGForceLon by dashboardViewModel.maxGForceLon.collectAsState()
 
                                     DashboardScreen(
                                         data = currentData,
@@ -488,7 +490,9 @@ class MainActivity : AppCompatActivity() {
                                         onToggleSource = { dashboardViewModel.toggleLeanSource() },
                                         onCalibrate = { dashboardViewModel.calibrateLeanAngle() },
                                         maxLeanLeft = maxLeanLeft,
-                                        maxLeanRight = maxLeanRight
+                                        maxLeanRight = maxLeanRight,
+                                        maxGForceLat = maxGForceLat,
+                                        maxGForceLon = maxGForceLon
                                     )
                                 } else {
                                     val sessions by dashboardViewModel.sessions.collectAsState()

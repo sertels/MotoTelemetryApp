@@ -64,9 +64,11 @@ class TelemetryService : Service() {
     private var maxCoolantTemp: Int = 0
     // Peak magnitude reached this ride in each axis, independent of each other (a hard stop and a
     // hard corner are different kinds of "riding hard" and shouldn't be collapsed into one
-    // combined-magnitude number).
-    private var maxGForceLat: Float = 0f
-    private var maxGForceLon: Float = 0f
+    // combined-magnitude number). StateFlows for the same live-on-Panel reason as maxLeanLeft/Right.
+    private val _maxGForceLat = MutableStateFlow(0f)
+    val maxGForceLat = _maxGForceLat.asStateFlow()
+    private val _maxGForceLon = MutableStateFlow(0f)
+    val maxGForceLon = _maxGForceLon.asStateFlow()
     private var totalFuelConsumedLiters: Float = 0f
     // A StateFlow (not a plain read-once Boolean) so DashboardViewModel can observe it directly
     // instead of racing: onStartCommand() and bindService()'s onServiceConnected() are both
@@ -296,8 +298,8 @@ class TelemetryService : Service() {
                 _maxLeanLeft.value = 0f
                 _maxLeanRight.value = 0f
                 maxCoolantTemp = 0
-                maxGForceLat = 0f
-                maxGForceLon = 0f
+                _maxGForceLat.value = 0f
+                _maxGForceLon.value = 0f
                 totalFuelConsumedLiters = 0f
                 lastLocation = null
 
@@ -335,8 +337,8 @@ class TelemetryService : Service() {
                         } else {
                             _maxLeanRight.value = max(_maxLeanRight.value, leanBike)
                         }
-                        maxGForceLat = max(maxGForceLat, abs(orientManager.gForceLat.value))
-                        maxGForceLon = max(maxGForceLon, abs(orientManager.gForceLon.value))
+                        _maxGForceLat.value = max(_maxGForceLat.value, abs(orientManager.gForceLat.value))
+                        _maxGForceLon.value = max(_maxGForceLon.value, abs(orientManager.gForceLon.value))
 
                         // Integrate fuel consumption (Rate is Liters/Hour, interval is 0.2s)
                         totalFuelConsumedLiters += (fuelRate / 3600f) * 0.2f
@@ -462,8 +464,8 @@ class TelemetryService : Service() {
                             maxLeanLeft = _maxLeanLeft.value,
                             maxLeanRight = _maxLeanRight.value,
                             maxCoolantTemp = maxCoolantTemp,
-                            maxGForceLat = maxGForceLat,
-                            maxGForceLon = maxGForceLon,
+                            maxGForceLat = _maxGForceLat.value,
+                            maxGForceLon = _maxGForceLon.value,
                             totalFuelLiters = totalFuelConsumedLiters
                         )
                         finalSession?.let { 
