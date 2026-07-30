@@ -326,7 +326,12 @@ class MainActivity : AppCompatActivity() {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(TelemetrySurfaceElevated)
-                                .windowInsetsPadding(WindowInsets.statusBars)
+                                // Horizontal side too, not just statusBars - in landscape the 3-button
+                                // nav bar sits on the side rather than the bottom, and without this the
+                                // lock icon at the end of the row renders underneath it.
+                                .windowInsetsPadding(
+                                    WindowInsets.statusBars.union(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
+                                )
                                 .height(barHeight)
                                 .padding(horizontal = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -853,10 +858,10 @@ private fun FuelRing(pct: Int?, ringSize: androidx.compose.ui.unit.Dp, stroke: a
                 size = arcSize
             )
         }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = "${pct ?: 0}", color = Color.White, fontSize = (ringSize.value * 0.23f).sp, fontWeight = FontWeight.Bold)
-            Text(text = "%", color = HomeTextTertiary, fontSize = (ringSize.value * 0.10f).sp, fontWeight = FontWeight.SemiBold)
-        }
+        // No "%" - the ring's fill arc plus the FUEL label above already say "percentage",
+        // so it was redundant, and dropping it lets the number sit dead-center and bigger
+        // (also helped a lot on the small landscape ring).
+        Text(text = "${pct ?: 0}", color = Color.White, fontSize = (ringSize.value * 0.36f).sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -988,7 +993,8 @@ private fun HomeCtaStack(
     onBackup: () -> Unit,
     onOpenRestore: () -> Unit,
     pillModifier: Modifier,
-    buttonHeight: androidx.compose.ui.unit.Dp
+    buttonHeight: androidx.compose.ui.unit.Dp,
+    buttonSpacing: androidx.compose.ui.unit.Dp = 10.dp
 ) {
     val pillShape = RoundedCornerShape(50)
     val textSize = if (buttonHeight > 46.dp) 15.sp else 14.sp
@@ -1028,7 +1034,7 @@ private fun HomeCtaStack(
             fontSize = textSize
         )
     }
-    Spacer(modifier = Modifier.height(10.dp))
+    Spacer(modifier = Modifier.height(buttonSpacing))
 
     OutlinedButton(
         onClick = onStopService,
@@ -1043,7 +1049,7 @@ private fun HomeCtaStack(
     ) {
         Text(stringResource(R.string.stop), fontWeight = FontWeight.SemiBold, fontSize = textSize)
     }
-    Spacer(modifier = Modifier.height(10.dp))
+    Spacer(modifier = Modifier.height(buttonSpacing))
 
     // A REPLACE restore mid-ride deletes the session row the service is still writing to,
     // silently losing the whole ride, so both actions are blocked while tracking is active.
@@ -1057,7 +1063,7 @@ private fun HomeCtaStack(
     ) {
         Text(stringResource(R.string.backup_drive), fontWeight = FontWeight.SemiBold, fontSize = textSize)
     }
-    Spacer(modifier = Modifier.height(10.dp))
+    Spacer(modifier = Modifier.height(buttonSpacing))
 
     OutlinedButton(
         onClick = onOpenRestore,
@@ -1094,38 +1100,41 @@ private fun HomePortraitContent(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp, vertical = 14.dp),
+            .padding(horizontal = 18.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
             text = stringResource(R.string.main_title),
             color = Color.White,
-            fontSize = 24.sp,
+            fontSize = 21.sp,
             fontWeight = FontWeight.Bold
         )
         Text(
             text = "LX900-A · ENGINE 4M96001",
             color = HomeModelGrey,
-            fontSize = 11.sp,
+            fontSize = 10.sp,
             fontFamily = FontFamily.Monospace,
             letterSpacing = 0.5.sp,
-            modifier = Modifier.padding(top = 5.dp)
+            modifier = Modifier.padding(top = 3.dp)
         )
 
         FuelHeroCard(
             fuelLevelPct = fuelLevelPct,
             fuelRangeKm = fuelRangeKm,
             lastRide = lastRide,
-            ringSize = 86.dp,
-            ringStroke = 7.dp,
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+            ringSize = 72.dp,
+            ringStroke = 6.dp,
+            cardPadding = 14.dp,
+            innerSpacing = 7.dp,
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
         )
 
         TodayRideCard(
             distanceKm = todayDistanceKm,
             durationLabel = todayDurationLabel,
             avgSpeedKmh = todayAvgSpeedKmh,
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+            verticalPadding = 10.dp,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
         )
 
         Text(
@@ -1134,7 +1143,7 @@ private fun HomePortraitContent(
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.5.sp,
-            modifier = Modifier.fillMaxWidth().padding(top = 18.dp)
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
         )
         HomeQuickAccessGrid(
             onGoToPanel = onGoToPanel,
@@ -1142,10 +1151,11 @@ private fun HomePortraitContent(
             onNavigateAnalysis = onNavigateAnalysis,
             onNavigateBikeInfo = onNavigateBikeInfo,
             onNavigateSettings = onNavigateSettings,
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+            buttonVerticalPadding = 9.dp,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
         )
 
-        Spacer(modifier = Modifier.height(18.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         HomeCtaStack(
             isTrackingActive = isTrackingActive,
@@ -1155,7 +1165,8 @@ private fun HomePortraitContent(
             onBackup = onBackup,
             onOpenRestore = onOpenRestore,
             pillModifier = Modifier.widthIn(max = 260.dp).fillMaxWidth(),
-            buttonHeight = 46.dp
+            buttonHeight = 40.dp,
+            buttonSpacing = 7.dp
         )
     }
 }
@@ -1194,7 +1205,7 @@ private fun HomeLandscapeContent(
             Text(
                 text = stringResource(R.string.main_title),
                 color = Color.White,
-                fontSize = 18.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
             )
             Text(
@@ -1203,27 +1214,27 @@ private fun HomeLandscapeContent(
                 fontSize = 9.sp,
                 fontFamily = FontFamily.Monospace,
                 letterSpacing = 0.5.sp,
-                modifier = Modifier.padding(top = 3.dp)
+                modifier = Modifier.padding(top = 2.dp)
             )
 
             FuelHeroCard(
                 fuelLevelPct = fuelLevelPct,
                 fuelRangeKm = fuelRangeKm,
                 lastRide = lastRide,
-                ringSize = 42.dp,
-                ringStroke = 5.dp,
-                cardPadding = 10.dp,
-                innerSpacing = 4.dp,
+                ringSize = 36.dp,
+                ringStroke = 4.dp,
+                cardPadding = 8.dp,
+                innerSpacing = 3.dp,
                 showLastRide = false,
-                modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
             )
 
             TodayRideCard(
                 distanceKm = todayDistanceKm,
                 durationLabel = todayDurationLabel,
                 avgSpeedKmh = todayAvgSpeedKmh,
-                verticalPadding = 6.dp,
-                modifier = Modifier.fillMaxWidth().padding(top = 5.dp)
+                verticalPadding = 5.dp,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
             )
 
             Text(
@@ -1232,7 +1243,7 @@ private fun HomeLandscapeContent(
                 fontSize = 8.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.2.sp,
-                modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
             )
             HomeQuickAccessGrid(
                 onGoToPanel = onGoToPanel,
@@ -1240,8 +1251,8 @@ private fun HomeLandscapeContent(
                 onNavigateAnalysis = onNavigateAnalysis,
                 onNavigateBikeInfo = onNavigateBikeInfo,
                 onNavigateSettings = onNavigateSettings,
-                buttonVerticalPadding = 6.dp,
-                modifier = Modifier.fillMaxWidth().padding(top = 5.dp)
+                buttonVerticalPadding = 5.dp,
+                modifier = Modifier.fillMaxWidth().padding(top = 3.dp)
             )
         }
 
