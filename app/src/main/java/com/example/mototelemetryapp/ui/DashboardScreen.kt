@@ -104,7 +104,11 @@ fun DashboardScreen(
                     // Intrinsic (not a guessed fixed dp) so it takes only what its three columns
                     // actually need - a hardcoded width here previously starved BarsCard of room,
                     // which made its labels wrap and blow its height past the row's.
-                    SpeedGearRpmCard(data, modifier = Modifier.width(IntrinsicSize.Min))
+                    SpeedGearRpmCard(
+                        data,
+                        horizontalArrangement = Arrangement.spacedBy(20.dp),
+                        modifier = Modifier.width(IntrinsicSize.Min)
+                    )
                     LeanGauge(
                         currentLean = currentLean,
                         leanSource = leanSource,
@@ -496,7 +500,16 @@ fun ClearDtcsConfirmDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
 }
 
 @Composable
-fun SpeedGearRpmCard(data: TelemetryRecord?, modifier: Modifier = Modifier) {
+fun SpeedGearRpmCard(
+    data: TelemetryRecord?,
+    // SpaceBetween spreads content to the card's full width, which is right for portrait's
+    // fillMaxWidth card - but landscape sizes this card with IntrinsicSize.Min, where the Row's
+    // width equals its own minimum, and SpaceBetween's "spread across the extra space" has none
+    // left to work with and degenerates to zero gaps between columns. spacedBy guarantees a gap
+    // regardless of how the width was determined, so the landscape caller passes that instead.
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.SpaceBetween,
+    modifier: Modifier = Modifier
+) {
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -510,19 +523,24 @@ fun SpeedGearRpmCard(data: TelemetryRecord?, modifier: Modifier = Modifier) {
             // IntrinsicSize.Min gives the Row (and so the divider) an actual bounded height to
             // be a fraction of.
             .height(IntrinsicSize.Min),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = horizontalArrangement,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column {
-            Text(text = stringResource(R.string.speed), color = TelemetryOnSurfaceMuted, fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
+            // Every Text here (labels included) is single-line/no-wrap: this card is sized via
+            // IntrinsicSize.Min in landscape (see LeanGauge's caller), which shrinks the column to
+            // whichever of label/value has the narrowest natural width. With "0" as the value
+            // (e.g. OBD disconnected) that's narrower than "SPEED"/"RPM", and an unguarded label
+            // would get dragged down to that width and wrap mid-word.
+            Text(text = stringResource(R.string.speed), color = TelemetryOnSurfaceMuted, fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
             Text(text = "${data?.speed ?: 0}", color = Color.White, fontSize = 58.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-            Text(text = stringResource(R.string.unit_kmh), color = TelemetryOnSurfaceMuted, fontSize = 13.sp)
+            Text(text = stringResource(R.string.unit_kmh), color = TelemetryOnSurfaceMuted, fontSize = 13.sp, maxLines = 1, softWrap = false)
         }
         VerticalDivider()
         GearReadout(data, fontSize = 68.sp)
         VerticalDivider()
         Column(horizontalAlignment = Alignment.End) {
-            Text(text = stringResource(R.string.rpm), color = TelemetryOnSurfaceMuted, fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
+            Text(text = stringResource(R.string.rpm), color = TelemetryOnSurfaceMuted, fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
             Text(text = "${data?.rpm ?: 0}", color = TelemetryAccent, fontSize = 27.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, modifier = Modifier.padding(top = 8.dp))
         }
     }
@@ -534,7 +552,7 @@ fun GearReadout(data: TelemetryRecord?, fontSize: androidx.compose.ui.unit.TextU
     // was below before, which read as a different kind of stat in the middle of two consistent
     // ones.
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = stringResource(R.string.gear), color = TelemetryOnSurfaceMuted, fontSize = 9.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
+        Text(text = stringResource(R.string.gear), color = TelemetryOnSurfaceMuted, fontSize = 9.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
         Text(
             text = if (data?.gear == 0) "N" else "${data?.gear ?: 0}",
             color = if (data?.gear == 0) TelemetryAccent else Color.White,
