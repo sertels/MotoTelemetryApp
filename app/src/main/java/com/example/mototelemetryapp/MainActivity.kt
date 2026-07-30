@@ -769,7 +769,16 @@ fun MainScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(backgroundBrush)) {
+    // The Home screen has no bottomBar (see showChrome in the caller), so unlike the other
+    // tabs its Scaffold innerPadding never accounts for the nav bar / gesture inset - without
+    // this, the CTA buttons at the bottom of portrait content render underneath the system
+    // nav bar on edge-to-edge (targetSdk 35+) devices.
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(backgroundBrush)
+            .windowInsetsPadding(WindowInsets.navigationBars)
+    ) {
         content()
 
         Column(
