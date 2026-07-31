@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,7 +41,8 @@ fun AnalysisScreen(
     sessions: List<Session>,
     onRenameSession: (Session, String) -> Unit,
     onDeleteSession: (Session) -> Unit,
-    getRecords: (Long) -> kotlinx.coroutines.flow.Flow<List<TelemetryRecord>>
+    getRecords: (Long) -> kotlinx.coroutines.flow.Flow<List<TelemetryRecord>>,
+    onViewRoute: (Long) -> Unit
 ) {
     var selectedSession by remember { mutableStateOf<Session?>(null) }
     
@@ -66,6 +68,7 @@ fun AnalysisScreen(
                         onClick = { selectedSession = session },
                         onRename = { newName -> onRenameSession(session, newName) },
                         onDelete = { onDeleteSession(session) },
+                        onViewRoute = { onViewRoute(session.id) },
                         getRecords = getRecords
                     )
                 }
@@ -100,6 +103,7 @@ fun SessionCard(
     onClick: () -> Unit,
     onRename: (String) -> Unit,
     onDelete: () -> Unit,
+    onViewRoute: () -> Unit,
     getRecords: (Long) -> Flow<List<TelemetryRecord>>
 ) {
     var showEditDialog by remember { mutableStateOf(false) }
@@ -140,6 +144,9 @@ fun SessionCard(
                     Text(text = dateStr, color = Color.Gray, fontSize = 12.sp)
                 }
                 Row {
+                    IconButton(onClick = onViewRoute) {
+                        Icon(Icons.Default.Map, contentDescription = stringResource(R.string.view_route), tint = Color.Gray)
+                    }
                     IconButton(onClick = {
                         newName = session.name
                         showEditDialog = true

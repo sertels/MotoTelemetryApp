@@ -26,6 +26,7 @@
     <string name="recording_status">Kayıt ediliyor…</string>
     <string name="go_to_panel">Panele Git</string>
     <string name="delete_session">Kaydı sil</string>
+    <string name="view_route">Rotayı haritada gör</string>
     <string name="lean_source_phone">TEL</string>
     <string name="lean_source_bike">MOTO</string>
     <string name="max_lean_left">MAKS SOL</string>

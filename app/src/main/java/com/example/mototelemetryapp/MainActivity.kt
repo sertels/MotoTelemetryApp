@@ -65,10 +65,12 @@ import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.example.mototelemetryapp.data.RestoreMode
 import com.example.mototelemetryapp.data.Session
 import com.example.mototelemetryapp.ui.AnalysisScreen
@@ -446,8 +448,12 @@ class MainActivity : AppCompatActivity() {
                             NavigationBarItem(
                                 icon = { Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(navIconSize)) },
                                 label = { Text(stringResource(R.string.history), fontSize = navLabelSize) },
-                                selected = currentRoute == "history",
-                                onClick = { navController.navigate("history") },
+                                // The route's actual pattern (not the resolved "history/5" path)
+                                // is what NavDestination.route reports while on this screen.
+                                selected = currentRoute == "history/{sessionId}",
+                                // -1 is the "no specific ride picked" sentinel - falls back to
+                                // the latest ride, same as this tab always did.
+                                onClick = { navController.navigate("history/-1") },
                                 colors = navItemColors
                             )
                             NavigationBarItem(
@@ -543,7 +549,7 @@ class MainActivity : AppCompatActivity() {
                                             dashboardViewModel.setTrackingActive(false)
                                         },
                                         onGoToPanel = { dashboardViewModel.bindService(context) },
-                                        onNavigateHistory = { navController.navigate("history") },
+                                        onNavigateHistory = { navController.navigate("history/-1") },
                                         onNavigateAnalysis = { navController.navigate("analysis") },
                                         onNavigateSettings = { navController.navigate("settings") },
                                         onBackup = {
@@ -570,8 +576,23 @@ class MainActivity : AppCompatActivity() {
                                     )
                                 }
                             }
-                            composable("history") {
-                                val history by dashboardViewModel.getLatestSessionRecords(context).collectAsState(initial = emptyList())
+                            composable(
+                                "history/{sessionId}",
+                                arguments = listOf(navArgument("sessionId") { type = NavType.LongType; defaultValue = -1L })
+                            ) { backStackEntry ->
+                                val sessionId = backStackEntry.arguments?.getLong("sessionId") ?: -1L
+                                // -1 (from the History tab / Home's Quick Access, neither of which
+                                // pick a specific ride) means "whatever was ridden most recently" -
+                                // any other id (from Analysis' "view route" button) means that ride
+                                // specifically, since a session's route otherwise had no way to be
+                                // seen on a map once it wasn't the latest one anymore.
+                                val history by (
+                                    if (sessionId > 0) {
+                                        dashboardViewModel.getRecordsForSession(context, sessionId)
+                                    } else {
+                                        dashboardViewModel.getLatestSessionRecords(context)
+                                    }
+                                ).collectAsState(initial = emptyList())
                                 HistoryScreen(records = history)
                             }
                             composable("bikeinfo") {
@@ -620,7 +641,8 @@ class MainActivity : AppCompatActivity() {
                                     },
                                     getRecords = { sessionId ->
                                         dashboardViewModel.getRecordsForSession(context, sessionId)
-                                    }
+                                    },
+                                    onViewRoute = { sessionId -> navController.navigate("history/$sessionId") }
                                 )
                             }
                             composable("settings") {

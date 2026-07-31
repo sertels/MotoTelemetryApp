@@ -26,6 +26,7 @@
     <string name="recording_status">Recording…</string>
     <string name="go_to_panel">Go to Panel</string>
     <string name="delete_session">Delete session</string>
+    <string name="view_route">View route on map</string>
     <string name="lean_source_phone">PHONE</string>
     <string name="lean_source_bike">BIKE</string>
     <string name="max_lean_left">MAX L</string>
