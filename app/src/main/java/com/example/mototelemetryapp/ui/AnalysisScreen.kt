@@ -287,12 +287,18 @@ fun SessionDetailView(records: List<TelemetryRecord>) {
 
     // Downsampled by stride (not just capped) so the whole ride is represented, not just its
     // first TARGET_CHART_POINTS records - and real elapsed minutes (not raw record index) is
-    // used for x, so the axis actually means something the rider can read at a glance.
+    // used for x, so the axis actually means something the rider can read at a glance. Rounded
+    // to 2 decimal places (~0.6s resolution, plenty for this) - Vico's GCD-based point spacing
+    // rejects x values with more than 4 decimal places, which raw millisecond-derived minutes
+    // almost always have (crashed on a real ride's data, 2026-08-01).
     val chartPoints = remember(records) {
         val stride = (records.size / TARGET_CHART_POINTS).coerceAtLeast(1)
         val startTimestamp = records.first().timestamp
         records.filterIndexed { index, _ -> index % stride == 0 }
-            .map { record -> Triple((record.timestamp - startTimestamp) / 60_000.0, record.speed.toFloat(), record.rpm.toFloat() / 100f) }
+            .map { record ->
+                val elapsedMinutes = ((record.timestamp - startTimestamp) / 60_000.0 * 100).roundToInt() / 100.0
+                Triple(elapsedMinutes, record.speed.toFloat(), record.rpm.toFloat() / 100f)
+            }
     }
 
     LaunchedEffect(chartPoints) {
