@@ -30,6 +30,13 @@ class OrientationManager(context: Context) : SensorEventListener, OrientationSou
     // Raw roll before the mount-tilt offset is applied.
     private var rawRoll = 0f
     private var rollOffset = prefs.getFloat(KEY_ROLL_OFFSET, 0f)
+    // event.timestamp (nanoseconds) of the last accepted roll sample, so the plausibility gate
+    // below can work in real degrees/sec instead of assuming a fixed sensor interval.
+    private var lastRollTimestampNs = 0L
+
+    // Exponentially-smoothed G readings - see the low-pass comment in onSensorChanged.
+    private var smoothedGForceLat = 0f
+    private var smoothedGForceLon = 0f
 
     private val _leanAngle = MutableStateFlow(0f)
     override val leanAngle = _leanAngle.asStateFlow()
@@ -93,8 +100,29 @@ class OrientationManager(context: Context) : SensorEventListener, OrientationSou
                 // roll swings wildly for tiny movements, so readings in that zone are
                 // dropped rather than recorded as if they were a real lean angle.
                 if (abs(pitchDeg) < GIMBAL_LOCK_PITCH_THRESHOLD_DEG) {
-                    rawRoll = Math.toDegrees(orientation[2].toDouble()).toFloat()
-                    _leanAngle.value = normalizeAngle(rawRoll - rollOffset)
+                    val candidateRoll = Math.toDegrees(orientation[2].toDouble()).toFloat()
+                    val elapsedSeconds = if (lastRollTimestampNs == 0L) {
+                        0f
+                    } else {
+                        (event.timestamp - lastRollTimestampNs) / 1_000_000_000f
+                    }
+                    lastRollTimestampNs = event.timestamp
+
+                    // A phone bouncing on its bike mount produces single-sample spikes no real
+                    // lean change could match (seen hitting +-170deg mid-ride on ordinary street
+                    // riding, 2026-07-31) - reject a sample outright if it implies an angular
+                    // rate beyond anything riding could actually produce, rather than record (or
+                    // smooth in) the glitch. First sample after (re)start always passes since
+                    // there's no prior timestamp to measure a rate against.
+                    val impliedRateDegPerSec = if (elapsedSeconds > 0f) {
+                        abs(normalizeAngle(candidateRoll - rawRoll)) / elapsedSeconds
+                    } else {
+                        0f
+                    }
+                    if (impliedRateDegPerSec <= MAX_ROLL_RATE_DEG_PER_SEC) {
+                        rawRoll = candidateRoll
+                        _leanAngle.value = normalizeAngle(rawRoll - rollOffset)
+                    }
                 }
             }
             Sensor.TYPE_LINEAR_ACCELERATION -> {
@@ -114,8 +142,18 @@ class OrientationManager(context: Context) : SensorEventListener, OrientationSou
                 }
 
                 val gravity = SensorManager.GRAVITY_EARTH
-                _gForceLat.value = bikeX / gravity
-                _gForceLon.value = bikeY / gravity
+                val rawGForceLat = bikeX / gravity
+                val rawGForceLon = bikeY / gravity
+
+                // A phone on a vibrating bike mount reports single-sample G spikes well past
+                // anything a real corner or stop produces (seen hitting 2.5g lateral / 4.9g
+                // longitudinal mid-ride on ordinary street riding, 2026-07-31) - a light
+                // exponential low-pass smooths that mount vibration out while still tracking
+                // genuine, sustained accelerations at riding speed.
+                smoothedGForceLat += G_FORCE_SMOOTHING_ALPHA * (rawGForceLat - smoothedGForceLat)
+                smoothedGForceLon += G_FORCE_SMOOTHING_ALPHA * (rawGForceLon - smoothedGForceLon)
+                _gForceLat.value = smoothedGForceLat
+                _gForceLon.value = smoothedGForceLon
             }
         }
     }
@@ -133,5 +171,9 @@ class OrientationManager(context: Context) : SensorEventListener, OrientationSou
         private const val PREFS_NAME = "orientation_prefs"
         private const val KEY_ROLL_OFFSET = "roll_offset"
         private const val GIMBAL_LOCK_PITCH_THRESHOLD_DEG = 65.0
+        // Generous headroom above any real lean-change rate a motorcycle could produce, so this
+        // only ever catches sensor glitches, never a genuinely fast flick into a corner.
+        private const val MAX_ROLL_RATE_DEG_PER_SEC = 400f
+        private const val G_FORCE_SMOOTHING_ALPHA = 0.25f
     }
 }
