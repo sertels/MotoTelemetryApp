@@ -111,6 +111,17 @@ fun SessionCard(
         SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault()).format(Date(session.startTime))
     }
 
+    // GPS distance (not bike/OBD) since that's the one reliably populated - see the 2026-07-31
+    // diagnosis of the OBD odometer DID silently failing.
+    val avgSpeedKmh = remember(session) {
+        val endTime = session.endTime
+        if (endTime != null && endTime > session.startTime && session.totalDistanceGpsKm > 0f) {
+            session.totalDistanceGpsKm / ((endTime - session.startTime) / 3_600_000f)
+        } else {
+            0f
+        }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -158,6 +169,13 @@ fun SessionCard(
                 StatItem(label = stringResource(R.string.stat_bike), value = "%.1f km".format(session.totalDistanceBikeKm))
                 StatItem(label = stringResource(R.string.stat_gps), value = "%.1f km".format(session.totalDistanceGpsKm))
                 StatItem(label = stringResource(R.string.fuel), value = "%.2f L".format(session.totalFuelLiters))
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                StatItem(label = stringResource(R.string.stat_max_speed), value = "${session.maxSpeed} km/h")
+                StatItem(label = stringResource(R.string.stat_avg_speed), value = "${avgSpeedKmh.toInt()} km/h")
             }
 
             Spacer(modifier = Modifier.height(10.dp))

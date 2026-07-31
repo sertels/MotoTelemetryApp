@@ -41,6 +41,8 @@
     <string name="chart_legend">Hız (Beyaz) &amp; Devir/100 (Mavi)</string>
     <string name="stat_bike">MOTOR</string>
     <string name="stat_gps">GPS</string>
+    <string name="stat_max_speed">MAKS HIZ</string>
+    <string name="stat_avg_speed">ORT HIZ</string>
     <string name="stat_max_lean_left">MAKS SOL</string>
     <string name="stat_max_lean_right">MAKS SAĞ</string>
     <string name="stat_max_g_lat">MAKS YANAL G</string>
