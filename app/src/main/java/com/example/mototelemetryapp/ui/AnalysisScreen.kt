@@ -176,6 +176,9 @@ fun SessionCard(
             Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 StatItem(label = stringResource(R.string.stat_max_speed), value = "${session.maxSpeed} km/h")
                 StatItem(label = stringResource(R.string.stat_avg_speed), value = "${avgSpeedKmh.toInt()} km/h")
+                // Not stored on Session (no schema change needed) - derived straight from this
+                // card's own records, same as the sparkline above.
+                StatItem(label = stringResource(R.string.stat_max_rpm), value = "${records.maxOfOrNull { it.rpm } ?: 0}")
             }
 
             Spacer(modifier = Modifier.height(10.dp))
