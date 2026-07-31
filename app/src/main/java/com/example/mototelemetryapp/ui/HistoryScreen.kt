@@ -7,7 +7,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -18,8 +22,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.mototelemetryapp.R
 import com.example.mototelemetryapp.data.TelemetryRecord
+import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.Polyline
@@ -45,6 +51,25 @@ fun HistoryScreen(records: List<TelemetryRecord>) {
         }
     }
 
+    // Encloses the whole route so it opens already framed - the rider shouldn't have to pan/
+    // zoom by hand to find it. Null for a single-point (or empty) route, where a bounding box
+    // is degenerate; the initial camera position above already centers on that one point.
+    val routeBounds = remember(points) {
+        if (points.size < 2) return@remember null
+        val builder = LatLngBounds.Builder()
+        points.forEach { builder.include(it) }
+        builder.build()
+    }
+    var isMapLoaded by remember { mutableStateOf(false) }
+
+    // Fitting bounds needs the map's actual pixel size, which isn't available until it's
+    // finished laying out - onMapLoaded below is what unblocks this.
+    LaunchedEffect(routeBounds, isMapLoaded) {
+        if (isMapLoaded && routeBounds != null) {
+            cameraPositionState.animate(CameraUpdateFactory.newLatLngBounds(routeBounds, 120))
+        }
+    }
+
     val totalKm = remember(points) { routeDistanceKm(points) }
     val durationMin = remember(records) {
         if (records.size >= 2) (records.last().timestamp - records.first().timestamp) / 60000f else 0f
@@ -54,7 +79,8 @@ fun HistoryScreen(records: List<TelemetryRecord>) {
     Box(modifier = Modifier.fillMaxSize()) {
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
-            cameraPositionState = cameraPositionState
+            cameraPositionState = cameraPositionState,
+            onMapLoaded = { isMapLoaded = true }
         ) {
             if (points.isNotEmpty()) {
                 Polyline(
