@@ -86,6 +86,19 @@ class BluetoothOBDManager(
     // resending the same header it was already on every single cycle.
     private var currentHeader: String? = null
 
+    // One-shot per connection: the first time a PID/DID's response doesn't match what parsing
+    // expects, the raw bytes get written to the persistent log so a mid-ride data gap (e.g. gear
+    // silently reading 0 all ride, 2026-07-31) leaves real evidence instead of just an ambiguous
+    // zero in the recorded data. Keyed by DID/PID and capped at one line each so a consistently
+    // unsupported command can't flood the log across a whole ride.
+    private val loggedUnexpectedResponses = mutableSetOf<String>()
+
+    private fun logUnexpectedResponseOnce(did: String, response: String) {
+        if (loggedUnexpectedResponses.add(did)) {
+            DiagnosticLog.w(tag, "Beklenmeyen cevap [$did]: \"$response\"")
+        }
+    }
+
     private suspend fun setHeader(header: String) {
         if (currentHeader == header) return
         sendCommand("ATSH$header")
@@ -146,40 +159,52 @@ class BluetoothOBDManager(
         // used to pair the adapter) is a common cause of SPP connect() silently failing.
         adapter.cancelDiscovery()
 
-        // Closes any socket left over from a previous connect() call before opening a new
-        // one, so switching devices (or retrying) doesn't leak the old RFCOMM channel.
-        closeSocketQuietly()
+        // The RFCOMM handshake on these cheap ELM327 clones is flaky right when the adapter has
+        // just powered on with the ignition - a single failed attempt used to permanently doom
+        // the whole ride to phone-sensors-only (confirmed via a real ride log, 2026-07-31: two
+        // back-to-back failures at engine start, zero retry, "continuing with phone sensors
+        // only" for the rest of the ride). A few quick retries here covers that automatically
+        // instead of relying on the rider noticing and re-tapping Connect several times.
+        repeat(CONNECT_MAX_ATTEMPTS) { attempt ->
+            // Closes any socket left over from the previous attempt (or a previous connect()
+            // call) before opening a new one, so retrying doesn't leak the old RFCOMM channel.
+            closeSocketQuietly()
 
-        try {
-            socket = obdDevice.createRfcommSocketToServiceRecord(obdUuid)
-            socket?.connect()
-            outputStream = socket?.outputStream
-            inputStream = socket?.inputStream
+            try {
+                socket = obdDevice.createRfcommSocketToServiceRecord(obdUuid)
+                socket?.connect()
+                outputStream = socket?.outputStream
+                inputStream = socket?.inputStream
 
-            // ATZ (sent by initELM327 below) resets the adapter, so any header set on a
-            // previous connection is no longer valid.
-            currentHeader = null
+                // ATZ (sent by initELM327 below) resets the adapter, so any header set on a
+                // previous connection is no longer valid.
+                currentHeader = null
 
-            if (initELM327()) {
-                _isConnected.value = true
-                if (preferredAddress == null) {
-                    // First-time connect via the name-hint heuristic - remember it too,
-                    // not just explicit picks from connectToDevice().
-                    setPreferredDevice(obdDevice.address)
+                if (initELM327()) {
+                    _isConnected.value = true
+                    loggedUnexpectedResponses.clear()
+                    if (preferredAddress == null) {
+                        // First-time connect via the name-hint heuristic - remember it too,
+                        // not just explicit picks from connectToDevice().
+                        setPreferredDevice(obdDevice.address)
+                    }
+                    Log.d(tag, "OBD2 Bağlantısı Başarılı.")
+                    // Launched on dataLoopScope (not awaited here) so the poll loop's lifetime is
+                    // tied to the owning Service, not to whichever coroutine called connect().
+                    dataLoopJob?.cancel()
+                    dataLoopJob = dataLoopScope.launch { startDataLoop() }
+                    return@withContext true
                 }
-                Log.d(tag, "OBD2 Bağlantısı Başarılı.")
-                // Launched on dataLoopScope (not awaited here) so the poll loop's lifetime is
-                // tied to the owning Service, not to whichever coroutine called connect().
-                dataLoopJob?.cancel()
-                dataLoopJob = dataLoopScope.launch { startDataLoop() }
-                return@withContext true
+            } catch (e: IOException) {
+                DiagnosticLog.e(tag, "Bağlantı hatası (deneme ${attempt + 1}/$CONNECT_MAX_ATTEMPTS): ${e.message}")
+                disconnect()
+            } catch (e: SecurityException) {
+                // A missing permission won't fix itself between attempts - retrying is pointless.
+                DiagnosticLog.e(tag, "Bluetooth izni eksik: ${e.message}")
+                disconnect()
+                return@withContext false
             }
-        } catch (e: IOException) {
-            DiagnosticLog.e(tag, "Bağlantı hatası: ${e.message}")
-            disconnect()
-        } catch (e: SecurityException) {
-            DiagnosticLog.e(tag, "Bluetooth izni eksik: ${e.message}")
-            disconnect()
+            if (attempt < CONNECT_MAX_ATTEMPTS - 1) delay(CONNECT_RETRY_DELAY_MS.milliseconds)
         }
         return@withContext false
     }
@@ -413,7 +438,10 @@ class BluetoothOBDManager(
             if (clean.contains("622503")) {
                 val hex = clean.substringAfter("622503").take(8)
                 java.lang.Long.parseLong(hex, 16)
-            } else 0L
+            } else {
+                logUnexpectedResponseOnce("222503", response)
+                0L
+            }
         } catch (_: Exception) { 0L }
     }
 
@@ -424,7 +452,10 @@ class BluetoothOBDManager(
             if (clean.contains("415E")) {
                 val hex = clean.substringAfter("415E").take(4)
                 Integer.parseInt(hex, 16) / 20f
-            } else 0f
+            } else {
+                logUnexpectedResponseOnce("015E", response)
+                0f
+            }
         } catch (_: Exception) { 0f }
     }
 
@@ -435,7 +466,10 @@ class BluetoothOBDManager(
             if (clean.contains("412F")) {
                 val hex = clean.substringAfter("412F").take(2)
                 (Integer.parseInt(hex, 16) * 100) / 255
-            } else 0
+            } else {
+                logUnexpectedResponseOnce("012F", response)
+                0
+            }
         } catch (_: Exception) { 0 }
     }
 
@@ -448,7 +482,10 @@ class BluetoothOBDManager(
                 val raw = Integer.parseInt(hex, 16).toShort().toInt()
                 // Genelde 0.1 çarpanı ile dereceye çevrilir
                 (raw * 0.1).toInt()
-            } else 0
+            } else {
+                logUnexpectedResponseOnce("22D10D", response)
+                0
+            }
         } catch (_: Exception) { 0 }
     }
 
@@ -481,7 +518,10 @@ class BluetoothOBDManager(
                 val rawGear = Integer.parseInt(hex, 16)
                 // BMW BMS-O genelde 0=N, 1-6=Gears. Bazı durumlarda 15=N.
                 if (rawGear == 15) 0 else rawGear
-            } else 0
+            } else {
+                logUnexpectedResponseOnce("2243F7", response)
+                0
+            }
         } catch (_: Exception) { 0 }
     }
 
@@ -552,7 +592,10 @@ class BluetoothOBDManager(
                 // BMW fren basıncı için genelde bar cinsinden veri döner.
                 // Basit bir ölçekleme yapıyoruz.
                 Integer.parseInt(hex, 16)
-            } else 0
+            } else {
+                logUnexpectedResponseOnce(prefix, response)
+                0
+            }
         } catch (_: Exception) { 0 }
     }
 
@@ -575,6 +618,8 @@ class BluetoothOBDManager(
         private const val PREFS_NAME = "obd_prefs"
         private const val KEY_DEVICE_ADDRESS = "device_address"
         private const val DTC_POLL_INTERVAL_TICKS = 50 // ~5s at the 100ms data-loop cadence
+        private const val CONNECT_MAX_ATTEMPTS = 4
+        private const val CONNECT_RETRY_DELAY_MS = 1200L
 
         // For callers (e.g. ObdAutoStartReceiver) that just need to peek at the stored device
         // address without constructing a full manager instance (sockets, mutexes, a data-loop
