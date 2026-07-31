@@ -74,6 +74,9 @@
     <string name="obd_sweep_hint">CAN başlıkları ve UDS tanımlayıcıları yanıt için taranıyor. Bu yaklaşık bir dakika sürer.</string>
     <string name="obd_sweep_progress">%1$d / %2$d sorgu</string>
     <string name="obd_sweep_close">Kapat</string>
+    <string name="obd_sweep_share">Paylaş</string>
+    <string name="share_obd_sweep">Tarama Sonuçlarını Paylaş</string>
+    <string name="obd_sweep_no_positive">Bu sorgularda pozitif (62…) cevap yok. Negatifler dahil tüm ham cevapları paylaşmak için \"Paylaş\"a dokun.</string>
     <string name="battery_optimization_hint">Ekran kilitlendiğinde kayıt durabilir. Kısıtlamasız pil kullanımına izin vermek için dokunun.</string>
     <string name="auto_start_on_obd_connect">OBD bağlandığında kaydı otomatik başlat</string>
     <string name="ride_grace_period">%1$d dk içinde yeniden bağlanırsa sürüşe devam et</string>

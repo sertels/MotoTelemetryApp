@@ -74,6 +74,9 @@
     <string name="obd_sweep_hint">Scanning CAN headers and UDS identifiers for a response. This takes about a minute.</string>
     <string name="obd_sweep_progress">%1$d / %2$d probes</string>
     <string name="obd_sweep_close">Close</string>
+    <string name="obd_sweep_share">Share</string>
+    <string name="share_obd_sweep">Share Sweep Results</string>
+    <string name="obd_sweep_no_positive">No positive (62…) response among these probes. Tap \"Share\" to send every raw response, including negative ones.</string>
     <string name="battery_optimization_hint">Recording may stop when the screen locks. Tap to allow unrestricted battery usage.</string>
     <string name="auto_start_on_obd_connect">Auto-start tracking when OBD connects</string>
     <string name="ride_grace_period">Continue ride if reconnected within %1$d min</string>

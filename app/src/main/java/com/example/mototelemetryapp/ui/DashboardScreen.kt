@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.mototelemetryapp.LeanSource
 import com.example.mototelemetryapp.ObdSweepEntry
+import com.example.mototelemetryapp.ObdSweepExport
 import com.example.mototelemetryapp.R
 import com.example.mototelemetryapp.data.TelemetryRecord
 import com.example.mototelemetryapp.ui.theme.TelemetryAccent
@@ -321,11 +322,28 @@ fun ObdSweepDialog(
     onCancel: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     androidx.compose.material3.AlertDialog(
         onDismissRequest = { if (running) onCancel() else onDismiss() },
         confirmButton = {
             androidx.compose.material3.TextButton(onClick = { if (running) onCancel() else onDismiss() }) {
                 Text(if (running) stringResource(R.string.cancel) else stringResource(R.string.obd_sweep_close))
+            }
+        },
+        dismissButton = {
+            // Every probed header/DID, not just the positive ones - a negative response still
+            // tells us the ECU is alive and simply rejects that ID, which matters just as much
+            // when diagnosing why a signal (e.g. gear) reads back nothing meaningful.
+            if (!running && results.isNotEmpty()) {
+                val shareChooserTitle = stringResource(R.string.share_obd_sweep)
+                androidx.compose.material3.TextButton(onClick = {
+                    val intent = ObdSweepExport.shareIntent(context, results)
+                    if (intent != null) {
+                        context.startActivity(android.content.Intent.createChooser(intent, shareChooserTitle))
+                    }
+                }) {
+                    Text(stringResource(R.string.obd_sweep_share))
+                }
             }
         },
         title = {
@@ -362,6 +380,16 @@ fun ObdSweepDialog(
                         color = TelemetryAccent,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                } else if (!running && results.isNotEmpty()) {
+                    // Otherwise this dialog renders as an empty box with no list and no results
+                    // to share individually - easy to mistake for "the sweep found nothing" when
+                    // really it just means every probe came back negative rather than positive.
+                    Text(
+                        stringResource(R.string.obd_sweep_no_positive),
+                        color = TelemetryOnSurfaceMuted,
+                        fontSize = 12.sp,
                         modifier = Modifier.padding(bottom = 6.dp)
                     )
                 }
