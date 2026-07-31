@@ -147,6 +147,8 @@ fun SessionCard(
             
             if (records.size >= 2) {
                 Spacer(modifier = Modifier.height(10.dp))
+                Text(text = stringResource(R.string.speed), color = Color.Gray, fontSize = 10.sp)
+                Spacer(modifier = Modifier.height(4.dp))
                 SpeedSparkline(records = records)
             }
 
