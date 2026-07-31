@@ -332,10 +332,18 @@ class TelemetryService : Service() {
                         // Update aggregates
                         maxSpeed = max(maxSpeed, speed)
                         maxCoolantTemp = max(maxCoolantTemp, coolant)
-                        if (leanBike < 0) {
-                            _maxLeanLeft.value = max(_maxLeanLeft.value, -leanBike)
+                        // LEAN_BIKE (OBD DID 22D10D) reads back exactly 0 both when the bike is
+                        // genuinely upright and when that DID just isn't answering - there's no
+                        // way to tell those apart from the value alone (confirmed via a real
+                        // ride, 2026-07-31: this DID silently failed for the whole ride despite
+                        // OBD being connected and other PIDs working fine, so Max L/Max R on
+                        // Panel just showed 0/0 all ride). Fall back to the phone's own lean
+                        // angle whenever the bike reads exactly 0, rather than record nothing.
+                        val leanForMax = if (leanBike != 0f) leanBike else leanPhone
+                        if (leanForMax < 0) {
+                            _maxLeanLeft.value = max(_maxLeanLeft.value, -leanForMax)
                         } else {
-                            _maxLeanRight.value = max(_maxLeanRight.value, leanBike)
+                            _maxLeanRight.value = max(_maxLeanRight.value, leanForMax)
                         }
                         _maxGForceLat.value = max(_maxGForceLat.value, abs(orientManager.gForceLat.value))
                         _maxGForceLon.value = max(_maxGForceLon.value, abs(orientManager.gForceLon.value))
