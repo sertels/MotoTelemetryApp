@@ -31,10 +31,14 @@ import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottomAxis
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStartAxis
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
+import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
+import com.patrykandpatrick.vico.core.cartesian.Zoom
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.core.cartesian.data.lineSeries
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.roundToInt
 
 @Composable
 fun AnalysisScreen(
@@ -266,6 +270,14 @@ fun StatItem(label: String, value: String) {
     }
 }
 
+// Vico's default zoom picks whichever is *more* zoomed in of a fixed "static" spacing and a
+// fit-to-content spacing - fine for a chart with a few dozen points, but for a real ~1hr ride
+// (~17500 records at the ~200ms recording cadence) that meant the chart opened showing only the
+// first couple of seconds of idle-at-zero data, with the rest reachable only by manually
+// scrolling through thousands of points (confirmed unusable on a real ride, 2026-08-01). Capping
+// the plotted points and forcing a fit-to-content zoom below is what actually fixes that.
+private const val TARGET_CHART_POINTS = 400
+
 @Composable
 fun SessionDetailView(records: List<TelemetryRecord>) {
     if (records.isEmpty()) return
@@ -273,12 +285,23 @@ fun SessionDetailView(records: List<TelemetryRecord>) {
     val modelProducer = remember { CartesianChartModelProducer() }
     var showError by remember { mutableStateOf(false) }
 
-    LaunchedEffect(records) {
+    // Downsampled by stride (not just capped) so the whole ride is represented, not just its
+    // first TARGET_CHART_POINTS records - and real elapsed minutes (not raw record index) is
+    // used for x, so the axis actually means something the rider can read at a glance.
+    val chartPoints = remember(records) {
+        val stride = (records.size / TARGET_CHART_POINTS).coerceAtLeast(1)
+        val startTimestamp = records.first().timestamp
+        records.filterIndexed { index, _ -> index % stride == 0 }
+            .map { record -> Triple((record.timestamp - startTimestamp) / 60_000.0, record.speed.toFloat(), record.rpm.toFloat() / 100f) }
+    }
+
+    LaunchedEffect(chartPoints) {
         try {
             modelProducer.runTransaction {
                 lineSeries {
-                    series(records.map { it.speed.toFloat() })
-                    series(records.map { it.rpm.toFloat() / 100f })
+                    val elapsedMinutes = chartPoints.map { it.first }
+                    series(elapsedMinutes, chartPoints.map { it.second })
+                    series(elapsedMinutes, chartPoints.map { it.third })
                 }
             }
             showError = false
@@ -299,15 +322,24 @@ fun SessionDetailView(records: List<TelemetryRecord>) {
             Text(text = stringResource(R.string.chart_legend), color = Color.White, fontSize = 14.sp)
         }
         Spacer(modifier = Modifier.height(8.dp))
-        
+
         if (!showError) {
+            val elapsedTimeFormatter = remember {
+                CartesianValueFormatter { value, _, _ ->
+                    val totalSeconds = (value * 60).roundToInt().coerceAtLeast(0)
+                    "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
+                }
+            }
             CartesianChartHost(
                 chart = rememberCartesianChart(
                     rememberLineCartesianLayer(),
                     startAxis = rememberStartAxis(),
-                    bottomAxis = rememberBottomAxis(),
+                    bottomAxis = rememberBottomAxis(valueFormatter = elapsedTimeFormatter),
                 ),
                 modelProducer = modelProducer,
+                // Content-fit so the whole (downsampled) ride is visible without scrolling by
+                // default - pinch-zoom still works from there for a closer look at one section.
+                zoomState = rememberVicoZoomState(initialZoom = Zoom.Content),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(200.dp)
