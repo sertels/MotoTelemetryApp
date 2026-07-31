@@ -61,6 +61,14 @@ class TelemetryService : Service() {
     val maxLeanLeft = _maxLeanLeft.asStateFlow()
     private val _maxLeanRight = MutableStateFlow(0f)
     val maxLeanRight = _maxLeanRight.asStateFlow()
+    // Which source actually produced the current max on each side, since it can be either one -
+    // see the phone fallback in the telemetry loop below. Lets the UI color-code Max L/Max R the
+    // same way it already does for live OBD-sourced readouts (e.g. RPM), so it's never ambiguous
+    // whether a given max came from the bike's own sensor or the phone's.
+    private val _maxLeanLeftSource = MutableStateFlow(LeanSource.BIKE)
+    val maxLeanLeftSource = _maxLeanLeftSource.asStateFlow()
+    private val _maxLeanRightSource = MutableStateFlow(LeanSource.BIKE)
+    val maxLeanRightSource = _maxLeanRightSource.asStateFlow()
     private var maxCoolantTemp: Int = 0
     // Peak magnitude reached this ride in each axis, independent of each other (a hard stop and a
     // hard corner are different kinds of "riding hard" and shouldn't be collapsed into one
@@ -297,6 +305,8 @@ class TelemetryService : Service() {
                 maxSpeed = 0
                 _maxLeanLeft.value = 0f
                 _maxLeanRight.value = 0f
+                _maxLeanLeftSource.value = LeanSource.BIKE
+                _maxLeanRightSource.value = LeanSource.BIKE
                 maxCoolantTemp = 0
                 _maxGForceLat.value = 0f
                 _maxGForceLon.value = 0f
@@ -339,11 +349,19 @@ class TelemetryService : Service() {
                         // OBD being connected and other PIDs working fine, so Max L/Max R on
                         // Panel just showed 0/0 all ride). Fall back to the phone's own lean
                         // angle whenever the bike reads exactly 0, rather than record nothing.
-                        val leanForMax = if (leanBike != 0f) leanBike else leanPhone
+                        val leanBikeAvailable = leanBike != 0f
+                        val leanForMax = if (leanBikeAvailable) leanBike else leanPhone
+                        val leanForMaxSource = if (leanBikeAvailable) LeanSource.BIKE else LeanSource.PHONE
                         if (leanForMax < 0) {
-                            _maxLeanLeft.value = max(_maxLeanLeft.value, -leanForMax)
+                            if (-leanForMax > _maxLeanLeft.value) {
+                                _maxLeanLeft.value = -leanForMax
+                                _maxLeanLeftSource.value = leanForMaxSource
+                            }
                         } else {
-                            _maxLeanRight.value = max(_maxLeanRight.value, leanForMax)
+                            if (leanForMax > _maxLeanRight.value) {
+                                _maxLeanRight.value = leanForMax
+                                _maxLeanRightSource.value = leanForMaxSource
+                            }
                         }
                         _maxGForceLat.value = max(_maxGForceLat.value, abs(orientManager.gForceLat.value))
                         _maxGForceLon.value = max(_maxGForceLon.value, abs(orientManager.gForceLon.value))

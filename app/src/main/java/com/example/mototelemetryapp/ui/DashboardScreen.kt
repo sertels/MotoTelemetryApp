@@ -64,6 +64,8 @@ fun DashboardScreen(
     onCalibrate: () -> Unit,
     maxLeanLeft: Float = 0f,
     maxLeanRight: Float = 0f,
+    maxLeanLeftSource: LeanSource = LeanSource.BIKE,
+    maxLeanRightSource: LeanSource = LeanSource.BIKE,
     maxGForceLat: Float = 0f,
     maxGForceLon: Float = 0f
 ) {
@@ -117,6 +119,8 @@ fun DashboardScreen(
                         onCalibrate = onCalibrate,
                         maxLeanLeft = maxLeanLeft,
                         maxLeanRight = maxLeanRight,
+                        maxLeanLeftSource = maxLeanLeftSource,
+                        maxLeanRightSource = maxLeanRightSource,
                         circleSize = 170.dp
                     )
                     BarsCard(data, maxGForceLat = maxGForceLat, maxGForceLon = maxGForceLon, compact = true, modifier = Modifier.weight(1f))
@@ -150,6 +154,8 @@ fun DashboardScreen(
                 onCalibrate = onCalibrate,
                 maxLeanLeft = maxLeanLeft,
                 maxLeanRight = maxLeanRight,
+                maxLeanLeftSource = maxLeanLeftSource,
+                maxLeanRightSource = maxLeanRightSource,
                 circleSize = 150.dp
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -618,6 +624,8 @@ fun LeanGauge(
     onCalibrate: () -> Unit,
     maxLeanLeft: Float,
     maxLeanRight: Float,
+    maxLeanLeftSource: LeanSource = LeanSource.BIKE,
+    maxLeanRightSource: LeanSource = LeanSource.BIKE,
     circleSize: Dp,
     modifier: Modifier = Modifier
 ) {
@@ -630,7 +638,7 @@ fun LeanGauge(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        MaxLeanLabel(maxLeanLeft, stringResource(R.string.max_lean_left))
+        MaxLeanLabel(maxLeanLeft, stringResource(R.string.max_lean_left), maxLeanLeftSource)
         Box(
             modifier = Modifier
                 .size(circleSize)
@@ -659,7 +667,10 @@ fun LeanGauge(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     text = "${abs(currentLean?.toInt() ?: 0)}°",
-                    color = Color.White,
+                    // Bike (OBD) data is TelemetryAccent everywhere else in this app (RPM, the
+                    // connected-OBD dot, etc.) - matching that here means the color alone says
+                    // whether this reading is coming from the bike's own sensor or the phone's.
+                    color = if (leanSource == LeanSource.BIKE) TelemetryAccent else Color.White,
                     fontSize = 30.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
@@ -673,16 +684,21 @@ fun LeanGauge(
                 modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).size(14.dp)
             )
         }
-        MaxLeanLabel(maxLeanRight, stringResource(R.string.max_lean_right))
+        MaxLeanLabel(maxLeanRight, stringResource(R.string.max_lean_right), maxLeanRightSource)
     }
 }
 
 @Composable
-private fun MaxLeanLabel(value: Float, label: String) {
+private fun MaxLeanLabel(value: Float, label: String, source: LeanSource) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(text = label, color = TelemetryOnSurfaceMuted, fontSize = 9.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
         Spacer(modifier = Modifier.height(2.dp))
-        Text(text = "${value.toInt()}°", color = Color(0xFFCCCCCC), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Text(
+            text = "${value.toInt()}°",
+            color = if (source == LeanSource.BIKE) TelemetryAccent else Color(0xFFCCCCCC),
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 

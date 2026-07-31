@@ -269,6 +269,16 @@ class DashboardViewModel : ViewModel() {
     val maxLeanRight = _maxLeanRight.asStateFlow()
     private var maxLeanRightCollectJob: Job? = null
 
+    // Which source (phone or bike) actually produced the current Max L/Max R, so the UI can
+    // color-code it the same way live OBD readouts already are.
+    private val _maxLeanLeftSource = MutableStateFlow(LeanSource.BIKE)
+    val maxLeanLeftSource = _maxLeanLeftSource.asStateFlow()
+    private var maxLeanLeftSourceCollectJob: Job? = null
+
+    private val _maxLeanRightSource = MutableStateFlow(LeanSource.BIKE)
+    val maxLeanRightSource = _maxLeanRightSource.asStateFlow()
+    private var maxLeanRightSourceCollectJob: Job? = null
+
     // Max G this ride, live - same reasoning as maxLeanLeft/Right above.
     private val _maxGForceLat = MutableStateFlow(0f)
     val maxGForceLat = _maxGForceLat.asStateFlow()
@@ -331,6 +341,14 @@ class DashboardViewModel : ViewModel() {
             maxLeanRightCollectJob = telemetryService?.maxLeanRight?.let { flow ->
                 viewModelScope.launch { flow.collect { _maxLeanRight.value = it } }
             }
+            maxLeanLeftSourceCollectJob?.cancel()
+            maxLeanLeftSourceCollectJob = telemetryService?.maxLeanLeftSource?.let { flow ->
+                viewModelScope.launch { flow.collect { _maxLeanLeftSource.value = it } }
+            }
+            maxLeanRightSourceCollectJob?.cancel()
+            maxLeanRightSourceCollectJob = telemetryService?.maxLeanRightSource?.let { flow ->
+                viewModelScope.launch { flow.collect { _maxLeanRightSource.value = it } }
+            }
             maxGForceLatCollectJob?.cancel()
             maxGForceLatCollectJob = telemetryService?.maxGForceLat?.let { flow ->
                 viewModelScope.launch { flow.collect { _maxGForceLat.value = it } }
@@ -363,6 +381,8 @@ class DashboardViewModel : ViewModel() {
             _obdRawData.value = emptyMap()
             maxLeanLeftCollectJob?.cancel()
             maxLeanRightCollectJob?.cancel()
+            maxLeanLeftSourceCollectJob?.cancel()
+            maxLeanRightSourceCollectJob?.cancel()
             maxGForceLatCollectJob?.cancel()
             maxGForceLonCollectJob?.cancel()
             // Left as-is (not reset to 0) on disconnect, same reasoning as _isTrackingActive: a
@@ -432,6 +452,8 @@ class DashboardViewModel : ViewModel() {
         _obdRawData.value = emptyMap()
         maxLeanLeftCollectJob?.cancel()
         maxLeanRightCollectJob?.cancel()
+        maxLeanLeftSourceCollectJob?.cancel()
+        maxLeanRightSourceCollectJob?.cancel()
         maxGForceLatCollectJob?.cancel()
         maxGForceLonCollectJob?.cancel()
     }
