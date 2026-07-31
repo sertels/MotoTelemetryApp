@@ -17,7 +17,7 @@
     <string name="backup_success">Yedekleme başarılı!</string>
     <string name="backup_error">Yedekleme hatası!</string>
     <string name="panel">Panel</string>
-    <string name="history">Geçmiş</string>
+    <string name="history">Rota</string>
     <string name="analysis">İstatistikler</string>
     <string name="select_language">Dil</string>
     <string name="lock_rotation">Ekran döndürmeyi kilitle</string>
