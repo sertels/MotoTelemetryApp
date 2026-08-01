@@ -63,6 +63,8 @@ fun BikeInfoScreen(
     speedKmh: Int?,
     batteryVolts: Float?,
     intakeTempC: Int?,
+    engineLoadPct: Int?,
+    ambientTempC: Int?,
     obdMilOn: Boolean,
     obdDtcCodes: List<String>,
     onClearObdDtcs: () -> Unit,
@@ -180,6 +182,20 @@ fun BikeInfoScreen(
                 StatCard(
                     label = stringResource(R.string.bike_info_intake_temp),
                     value = "${intakeTempC ?: 0}",
+                    unit = "°C",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatCard(
+                    label = stringResource(R.string.bike_info_engine_load),
+                    value = "${engineLoadPct ?: 0}",
+                    unit = "%",
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
+                    label = stringResource(R.string.bike_info_ambient_temp),
+                    value = "${ambientTempC ?: 0}",
                     unit = "°C",
                     modifier = Modifier.weight(1f)
                 )

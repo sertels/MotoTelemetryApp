@@ -402,6 +402,14 @@ class BluetoothOBDManager(
         sendCommand("010F")
         val intakeTemp = parseIntakeTemp(readResponse())
 
+        // Two more standard PIDs confirmed answering on this ECU (car_all_sensors_*.csv PID 4
+        // "Calculated Load Value" 29.0%, PID 70 "Ambient Air Temperature" 24.0°C), 2026-08-01.
+        sendCommand("0104")
+        val engineLoad = parseEngineLoad(readResponse())
+
+        sendCommand("0146")
+        val ambientTemp = parseAmbientTemp(readResponse())
+
         // --- ABS/IMU Data (Header 7E1) ---
         setHeader("7E1")
 
@@ -428,7 +436,9 @@ class BluetoothOBDManager(
             "FUEL_RATE" to (fuelRate * 100).toInt(), // Scale for Map
             "FUEL_LEVEL" to fuelLevel,
             "BATTERY" to batteryVolts, // Tenths of a volt (138 = 13.8V) - matches the existing /10f in MainActivity
-            "INTAKE_TEMP" to intakeTemp
+            "INTAKE_TEMP" to intakeTemp,
+            "ENGINE_LOAD" to engineLoad,
+            "AMBIENT_TEMP" to ambientTemp
         )
     }
 
@@ -564,6 +574,36 @@ class BluetoothOBDManager(
                 Integer.parseInt(hex, 16) - 40
             } else {
                 markPidStatus("010F", false)
+                0
+            }
+        } catch (_: Exception) { 0 }
+    }
+
+    private fun parseEngineLoad(response: String): Int {
+        // 41 04 XX -> XX * 100 / 255
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains("4104")) {
+                val hex = clean.substringAfter("4104").take(2)
+                markPidStatus("0104", true)
+                (Integer.parseInt(hex, 16) * 100) / 255
+            } else {
+                markPidStatus("0104", false)
+                0
+            }
+        } catch (_: Exception) { 0 }
+    }
+
+    private fun parseAmbientTemp(response: String): Int {
+        // 41 46 XX -> XX - 40
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains("4146")) {
+                val hex = clean.substringAfter("4146").take(2)
+                markPidStatus("0146", true)
+                Integer.parseInt(hex, 16) - 40
+            } else {
+                markPidStatus("0146", false)
                 0
             }
         } catch (_: Exception) { 0 }
@@ -848,6 +888,8 @@ class BluetoothOBDManager(
             PidMapping("7E0", "012F", "Fuel level"),
             PidMapping("7E0", "0142", "Battery voltage"),
             PidMapping("7E0", "010F", "Intake air temp"),
+            PidMapping("7E0", "0104", "Engine load"),
+            PidMapping("7E0", "0146", "Ambient air temp"),
             PidMapping("7E0", "0101", "MIL status / DTC count"),
             PidMapping("7E0", "03", "Stored DTCs")
         )

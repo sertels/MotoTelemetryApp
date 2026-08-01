@@ -632,6 +632,8 @@ class MainActivity : AppCompatActivity() {
                                     speedKmh = obdRawData["SPEED"],
                                     batteryVolts = obdRawData["BATTERY"]?.let { it / 10f },
                                     intakeTempC = obdRawData["INTAKE_TEMP"],
+                                    engineLoadPct = obdRawData["ENGINE_LOAD"],
+                                    ambientTempC = obdRawData["AMBIENT_TEMP"],
                                     obdMilOn = obdMilOn,
                                     obdDtcCodes = obdDtcCodes,
                                     onClearObdDtcs = { dashboardViewModel.clearObdDtcs() },
