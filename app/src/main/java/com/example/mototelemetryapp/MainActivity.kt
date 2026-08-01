@@ -455,17 +455,17 @@ class MainActivity : AppCompatActivity() {
                                 colors = navItemColors
                             )
                             NavigationBarItem(
-                                icon = { Icon(Icons.Default.TwoWheeler, contentDescription = null, modifier = Modifier.size(navIconSize)) },
-                                label = { Text(stringResource(R.string.bike_info), fontSize = navLabelSize) },
-                                selected = currentRoute == "bikeinfo",
-                                onClick = { navController.navigate("bikeinfo") },
-                                colors = navItemColors
-                            )
-                            NavigationBarItem(
                                 icon = { Icon(Icons.Default.QueryStats, contentDescription = null, modifier = Modifier.size(navIconSize)) },
                                 label = { Text(stringResource(R.string.analysis), fontSize = navLabelSize) },
                                 selected = currentRoute == "analysis",
                                 onClick = { navController.navigate("analysis") },
+                                colors = navItemColors
+                            )
+                            NavigationBarItem(
+                                icon = { Icon(Icons.Default.TwoWheeler, contentDescription = null, modifier = Modifier.size(navIconSize)) },
+                                label = { Text(stringResource(R.string.bike_info), fontSize = navLabelSize) },
+                                selected = currentRoute == "bikeinfo",
+                                onClick = { navController.navigate("bikeinfo") },
                                 colors = navItemColors
                             )
                             NavigationBarItem(
