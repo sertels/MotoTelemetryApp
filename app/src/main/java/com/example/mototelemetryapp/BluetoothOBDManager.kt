@@ -142,12 +142,6 @@ class BluetoothOBDManager(
         return adapter.bondedDevices.toList()
     }
 
-    // Adapters that never advertised a name still need to be pickable, so fall back to the
-    // address as the label rather than dropping the device from the list.
-    @SuppressLint("MissingPermission")
-    override fun getPairedDeviceEntries(): List<Pair<String, String>> =
-        getPairedDevices().map { (it.name ?: it.address) to it.address }
-
     override fun getPreferredDeviceAddress(): String? = prefs.getString(KEY_DEVICE_ADDRESS, null)
 
     fun setPreferredDevice(address: String) {

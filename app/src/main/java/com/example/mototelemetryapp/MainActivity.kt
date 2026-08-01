@@ -367,7 +367,10 @@ class MainActivity : AppCompatActivity() {
                             }
                             ObdStatusBadge(
                                 connected = obdConnected,
-                                onFetchDevices = { dashboardViewModel.getPairedObdDevices() },
+                                // Plain Android Bluetooth query, not routed through the service -
+                                // see getPairedBluetoothDeviceEntries for why (listing must not
+                                // force-bind the service, which used to hijack Home into Panel).
+                                onFetchDevices = { getPairedBluetoothDeviceEntries(context) },
                                 onConnect = { address -> dashboardViewModel.connectObd(context, address) },
                                 simulated = obdSimulated,
                                 onDisconnect = { dashboardViewModel.disconnectObd() }
@@ -505,29 +508,6 @@ class MainActivity : AppCompatActivity() {
                                         maxGForceLon = maxGForceLon
                                     )
                                 } else {
-                                    // The OBD badge lives in the shared top bar and is reachable
-                                    // from Home too, but until the service is bound
-                                    // dashboardViewModel.telemetryService is null, so tapping it
-                                    // silently no-ops (empty device list, connect() does nothing) -
-                                    // reported as "the OBD button looks broken" on a real ride,
-                                    // 2026-08-01.
-                                    //
-                                    // First fix here only bound when isTrackingActive was already
-                                    // true (background session, UI just hadn't bound yet) - but
-                                    // the same dead-badge symptom reproduced with tracking never
-                                    // started at all ("Eşleşmiş Bluetooth cihazı yok" even though
-                                    // the adapter genuinely was paired), same day. autoCreate=true
-                                    // (BIND_AUTO_CREATE) is safe unconditionally here: it only
-                                    // runs the service's onCreate() - bluetoothOBDManager etc. -
-                                    // not onStartCommand(), so it does NOT start a ride recording,
-                                    // GPS tracking, or the foreground notification; those all live
-                                    // behind the separate explicit startService() call in
-                                    // onStartService below.
-                                    LaunchedEffect(Unit) {
-                                        if (!isBound) {
-                                            dashboardViewModel.bindService(context)
-                                        }
-                                    }
                                     val sessions by dashboardViewModel.sessions.collectAsState()
                                     val fuelLevelPct by dashboardViewModel.fuelLevelPct.collectAsState()
                                     val serviceRemainingKm by dashboardViewModel.serviceRemainingKm.collectAsState()

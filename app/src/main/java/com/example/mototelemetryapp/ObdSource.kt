@@ -33,10 +33,6 @@ interface ObdSource {
     // a screenshot is never ambiguous about whether it shows a real bike.
     val isSimulated: Boolean
 
-    // (display name, address) pairs - the UI never needs the BluetoothDevice itself, and the
-    // simulator has no such object to hand back.
-    fun getPairedDeviceEntries(): List<Pair<String, String>>
-
     fun getPreferredDeviceAddress(): String?
 
     suspend fun connect(): Boolean
@@ -99,5 +95,25 @@ fun hasPairedBluetoothDevices(context: Context): Boolean {
         adapter.bondedDevices.isNotEmpty()
     } catch (_: SecurityException) {
         false
+    }
+}
+
+// Lets the OBD badge list pairable devices from anywhere (e.g. Home, before the user has ever
+// pressed Start/Panel) without needing TelemetryService to exist first. Routing this through
+// dashboardViewModel.getPairedObdDevices() (which needs telemetryService non-null) used to force
+// binding the service just to list devices - and since the Home/Panel branch in MainActivity is
+// keyed off that same "is the service bound" flag, binding for this made the app jump straight
+// to Panel the instant bind succeeded, even though the user only wanted to open the OBD dropdown.
+// Reported 2026-08-01. Actually connecting still goes through the service (see
+// DashboardViewModel.connectObd), only listing is decoupled here.
+@SuppressLint("MissingPermission")
+fun getPairedBluetoothDeviceEntries(context: Context): List<Pair<String, String>> {
+    val adapter = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+        ?: return emptyList()
+    if (!adapter.isEnabled) return emptyList()
+    return try {
+        adapter.bondedDevices.map { (it.name ?: it.address) to it.address }
+    } catch (_: SecurityException) {
+        emptyList()
     }
 }

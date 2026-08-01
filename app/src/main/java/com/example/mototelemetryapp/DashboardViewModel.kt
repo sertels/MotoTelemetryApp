@@ -421,8 +421,6 @@ class DashboardViewModel : ViewModel() {
         }
     }
 
-    fun getPairedObdDevices(): List<Pair<String, String>> = telemetryService?.getPairedObdDevices() ?: emptyList()
-
     fun connectObd(context: Context, address: String) {
         viewModelScope.launch {
             val connected = telemetryService?.connectObd(address) ?: false

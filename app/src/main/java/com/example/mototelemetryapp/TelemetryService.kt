@@ -1,6 +1,5 @@
 package com.example.mototelemetryapp
 
-import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -109,10 +108,6 @@ class TelemetryService : Service() {
     }
 
     val obdConnected get() = bluetoothOBDManager?.isConnected
-
-    @SuppressLint("MissingPermission")
-    fun getPairedObdDevices(): List<Pair<String, String>> =
-        bluetoothOBDManager?.getPairedDeviceEntries() ?: emptyList()
 
     // Lets the UI label the status badge as synthetic, so no screenshot is ambiguous about
     // whether it came from a real bike.

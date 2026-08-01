@@ -60,9 +60,6 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
     private var odometerKm = START_ODOMETER_KM
     private var fuelLevelPct = START_FUEL_LEVEL_PCT
 
-    override fun getPairedDeviceEntries(): List<Pair<String, String>> =
-        listOf(SIMULATED_DEVICE_NAME to SIMULATED_DEVICE_ADDRESS)
-
     override fun getPreferredDeviceAddress(): String = SIMULATED_DEVICE_ADDRESS
 
     override suspend fun connectToDevice(address: String): Boolean = connect()
@@ -291,7 +288,6 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
     }
 
     companion object {
-        const val SIMULATED_DEVICE_NAME = "Simulated OBD (no bike)"
         const val SIMULATED_DEVICE_ADDRESS = "00:00:00:00:00:00"
 
         private const val TICK_MS = 100L // matches BluetoothOBDManager's data-loop cadence
