@@ -510,13 +510,22 @@ class MainActivity : AppCompatActivity() {
                                     // dashboardViewModel.telemetryService is null, so tapping it
                                     // silently no-ops (empty device list, connect() does nothing) -
                                     // reported as "the OBD button looks broken" on a real ride,
-                                    // 2026-08-01, where tracking was already active in the
-                                    // background but the UI hadn't bound yet. autoCreate=false so
-                                    // this only attaches to an already-running service instead of
-                                    // spinning one up just because the user opened Home.
+                                    // 2026-08-01.
+                                    //
+                                    // First fix here only bound when isTrackingActive was already
+                                    // true (background session, UI just hadn't bound yet) - but
+                                    // the same dead-badge symptom reproduced with tracking never
+                                    // started at all ("Eşleşmiş Bluetooth cihazı yok" even though
+                                    // the adapter genuinely was paired), same day. autoCreate=true
+                                    // (BIND_AUTO_CREATE) is safe unconditionally here: it only
+                                    // runs the service's onCreate() - bluetoothOBDManager etc. -
+                                    // not onStartCommand(), so it does NOT start a ride recording,
+                                    // GPS tracking, or the foreground notification; those all live
+                                    // behind the separate explicit startService() call in
+                                    // onStartService below.
                                     LaunchedEffect(Unit) {
-                                        if (!isBound && isTrackingActive) {
-                                            dashboardViewModel.bindService(context, autoCreate = false)
+                                        if (!isBound) {
+                                            dashboardViewModel.bindService(context)
                                         }
                                     }
                                     val sessions by dashboardViewModel.sessions.collectAsState()
