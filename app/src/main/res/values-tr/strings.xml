@@ -42,6 +42,7 @@
     <string name="chart_legend">Hız (Beyaz) &amp; Devir/100 (Mavi)</string>
     <string name="chart_legend_lean">Yatış Açısı ° (Sol −/Sağ +)</string>
     <string name="chart_legend_gforce">Yanal G (Beyaz) &amp; Boyuna G (Mavi)</string>
+    <string name="chart_legend_altitude">Rakım, m (Beyaz)</string>
     <string name="stat_bike">MOTOR</string>
     <string name="stat_gps">GPS</string>
     <string name="stat_max_speed">MAKS HIZ</string>

@@ -314,6 +314,14 @@ fun SessionDetailView(records: List<TelemetryRecord>) {
             seriesSelectors = listOf({ it.gForceLat }, { it.gForceLon }),
             seriesColors = listOf(Color.White, TelemetryAccent)
         )
+        // GPS-sourced, not OBD - reliable for the same reason distance/route already use GPS
+        // elsewhere in this screen rather than the bike's odometer.
+        TelemetryLineChart(
+            records = records,
+            legend = stringResource(R.string.chart_legend_altitude),
+            seriesSelectors = listOf({ it.altitude.toFloat() }),
+            seriesColors = listOf(Color.White)
+        )
     }
 }
 
