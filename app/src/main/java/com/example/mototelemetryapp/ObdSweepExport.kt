@@ -27,6 +27,26 @@ object ObdSweepExport {
 
     fun shareIntent(context: Context, results: List<ObdSweepEntry>): Intent? {
         val file = save(context, results) ?: return null
+        return shareFile(context, file)
+    }
+
+    // Same reasoning as the sweep results above, for a raw ATMA capture (BluetoothOBDManager.
+    // startCanMonitor) - one line per captured CAN frame, so it can be shared/diffed off-phone
+    // to spot which ID changed while the bike was tilted.
+    private fun saveCanFrames(context: Context, frames: List<String>): File? {
+        if (frames.isEmpty()) return null
+        val dir = File(context.applicationContext.filesDir, "diagnostics").apply { mkdirs() }
+        val file = File(dir, "can_monitor_${fileTimestampFormat.format(Date())}.txt")
+        file.writeText(frames.joinToString("\n"))
+        return file
+    }
+
+    fun shareCanFramesIntent(context: Context, frames: List<String>): Intent? {
+        val file = saveCanFrames(context, frames) ?: return null
+        return shareFile(context, file)
+    }
+
+    private fun shareFile(context: Context, file: File): Intent {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         return Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"

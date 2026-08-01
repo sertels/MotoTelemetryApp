@@ -59,6 +59,13 @@ interface ObdSource {
     // EXPLICITLY RISKY - changes ECU diagnostic session state (10 03), not just a read. Manual,
     // one-off use only, engine off - see BluetoothOBDManager.trySecuritySessionProbe for why.
     suspend fun trySecuritySessionProbe()
+
+    // Raw passive CAN bus capture (ATMA) - read-only, no risk to the ECU, unlike the two above.
+    // See BluetoothOBDManager.startCanMonitor for why (hunting for the broadcast-only lean angle
+    // signal a cornering-ABS IMU sends, rather than answering request/response queries).
+    val canMonitorRunning: StateFlow<Boolean>
+    val canMonitorFrames: StateFlow<List<String>>
+    suspend fun startCanMonitor(durationSeconds: Int = 8): List<String>
 }
 
 // Whether the simulated sources should be used instead of the real Bluetooth adapter and

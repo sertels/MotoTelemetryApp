@@ -614,6 +614,8 @@ class MainActivity : AppCompatActivity() {
                                 }
                                 val obdRawData by dashboardViewModel.obdRawData.collectAsState()
                                 val obdPidStatus by dashboardViewModel.obdPidStatus.collectAsState()
+                                val canMonitorRunning by dashboardViewModel.canMonitorRunning.collectAsState()
+                                val canMonitorFrames by dashboardViewModel.canMonitorFrames.collectAsState()
                                 val serviceRemainingKm by dashboardViewModel.serviceRemainingKm.collectAsState()
                                 LaunchedEffect(Unit) { dashboardViewModel.fetchDashboardSummary(context) }
 
@@ -643,7 +645,10 @@ class MainActivity : AppCompatActivity() {
                                     onRunObdSweep = { dashboardViewModel.runObdSweep() },
                                     onRunStandardPidSweep = { dashboardViewModel.runStandardPidSweep() },
                                     onRunSecuritySessionProbe = { dashboardViewModel.runSecuritySessionProbe() },
-                                    onCancelObdSweep = { dashboardViewModel.cancelObdSweep() }
+                                    onCancelObdSweep = { dashboardViewModel.cancelObdSweep() },
+                                    canMonitorRunning = canMonitorRunning,
+                                    canMonitorFrames = canMonitorFrames,
+                                    onRunCanMonitor = { seconds -> dashboardViewModel.runCanMonitor(seconds) }
                                 )
                             }
                             composable("analysis") {

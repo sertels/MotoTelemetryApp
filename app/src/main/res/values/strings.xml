@@ -146,6 +146,12 @@
     <string name="bike_info_risky_session_confirm_title">Engine must be off</string>
     <string name="bike_info_risky_session_confirm_message">This puts the ECU into an extended diagnostic session before probing two addresses - unlike every other query in this app, it changes ECU state rather than just reading it. Only run this with the engine off. Continue?</string>
     <string name="bike_info_risky_session_confirm_button">Continue</string>
+    <string name="bike_info_can_monitor_title">Listen to raw CAN bus</string>
+    <string name="bike_info_can_monitor_hint">Passive, read-only - find which CAN ID carries lean angle by tilting the bike</string>
+    <string name="bike_info_can_monitor_intro">Tap Start, then tilt the bike side to side while it captures for 8 seconds. Compare frames afterward for the ID whose bytes move with the tilt.</string>
+    <string name="bike_info_can_monitor_start">Start (8s)</string>
+    <string name="bike_info_can_monitor_running">Capturing… %1$d frames</string>
+    <string name="bike_info_can_monitor_done">Capture done · %1$d frames</string>
     <string name="g_force_lat">LATERAL G</string>
     <string name="g_force_lon">LONG. G</string>
 </resources>

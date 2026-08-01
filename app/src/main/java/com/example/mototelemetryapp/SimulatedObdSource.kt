@@ -145,6 +145,32 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
         }
     }
 
+    private val _canMonitorRunning = MutableStateFlow(false)
+    override val canMonitorRunning = _canMonitorRunning.asStateFlow()
+
+    private val _canMonitorFrames = MutableStateFlow<List<String>>(emptyList())
+    override val canMonitorFrames = _canMonitorFrames.asStateFlow()
+
+    // Fakes a handful of plausible-looking CAN frames, one ID of which visibly "counts" (mimics
+    // an IMU broadcasting a changing roll value), so the monitor dialog can be exercised without
+    // a bike attached.
+    override suspend fun startCanMonitor(durationSeconds: Int): List<String> {
+        if (!_isConnected.value) return emptyList()
+        _canMonitorRunning.value = true
+        _canMonitorFrames.value = emptyList()
+        val frames = mutableListOf<String>()
+        val steps = (durationSeconds * 4).coerceAtLeast(1)
+        repeat(steps) { i ->
+            delay(250.milliseconds)
+            val roll = (i * 7 % 256).toString(16).uppercase().padStart(2, '0')
+            frames.add("1A0 8 $roll 00 12 34 00 00 00 00")
+            frames.add("7DF 8 02 01 00 00 00 00 00 00")
+            _canMonitorFrames.value = frames.toList()
+        }
+        _canMonitorRunning.value = false
+        return frames
+    }
+
     // Simulator has no real ECU session to escalate - just reports a plausible negative so the
     // confirmation/result dialog flow can be exercised without a bike attached.
     override suspend fun trySecuritySessionProbe() {

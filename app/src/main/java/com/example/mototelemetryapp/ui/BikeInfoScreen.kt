@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import com.example.mototelemetryapp.BluetoothOBDManager
 import com.example.mototelemetryapp.DtcDescriptions
 import com.example.mototelemetryapp.ObdSweepEntry
+import com.example.mototelemetryapp.ObdSweepExport
 import com.example.mototelemetryapp.R
 import com.example.mototelemetryapp.ui.theme.TelemetryAccent
 import com.example.mototelemetryapp.ui.theme.TelemetryOnSurfaceMuted
@@ -74,7 +75,10 @@ fun BikeInfoScreen(
     onRunObdSweep: () -> Unit,
     onRunStandardPidSweep: () -> Unit,
     onRunSecuritySessionProbe: () -> Unit,
-    onCancelObdSweep: () -> Unit = {}
+    onCancelObdSweep: () -> Unit = {},
+    canMonitorRunning: Boolean = false,
+    canMonitorFrames: List<String> = emptyList(),
+    onRunCanMonitor: (Int) -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -235,6 +239,12 @@ fun BikeInfoScreen(
             progress = obdSweepProgress,
             onRun = onRunSecuritySessionProbe,
             onCancel = onCancelObdSweep
+        )
+
+        CanMonitorCta(
+            running = canMonitorRunning,
+            frames = canMonitorFrames,
+            onRun = onRunCanMonitor
         )
     }
 }
@@ -618,4 +628,119 @@ private fun RiskySessionCta(
             onDismiss = { showResultDialog = false }
         )
     }
+}
+
+// Read-only passive capture (ATMA) - no ECU state change, so unlike RiskySessionCta this needs
+// no confirmation gate, just its own dialog since the result shape (raw text lines, not
+// ObdSweepEntry) differs from the two sweeps above.
+@Composable
+private fun CanMonitorCta(
+    running: Boolean,
+    frames: List<String>,
+    onRun: (Int) -> Unit
+) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(CardBg, RoundedCornerShape(14.dp))
+            .border(1.dp, CardBorderSoft, RoundedCornerShape(14.dp))
+            .clickable { showDialog = true }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(stringResource(R.string.bike_info_can_monitor_title), color = Color(0xFFCCCCCC), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                stringResource(R.string.bike_info_can_monitor_hint),
+                color = TelemetryOnSurfaceMuted,
+                fontSize = 10.5.sp,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+            contentDescription = null,
+            tint = TelemetryAccent,
+            modifier = Modifier.size(16.dp)
+        )
+    }
+
+    if (showDialog) {
+        CanMonitorDialog(
+            running = running,
+            frames = frames,
+            onRun = onRun,
+            onDismiss = { showDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun CanMonitorDialog(
+    running: Boolean,
+    frames: List<String>,
+    onRun: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val durationSeconds = 8
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.obd_sweep_close))
+            }
+        },
+        dismissButton = {
+            Row {
+                if (!running) {
+                    androidx.compose.material3.TextButton(onClick = { onRun(durationSeconds) }) {
+                        Text(stringResource(R.string.bike_info_can_monitor_start))
+                    }
+                }
+                if (!running && frames.isNotEmpty()) {
+                    val shareChooserTitle = stringResource(R.string.share_obd_sweep)
+                    androidx.compose.material3.TextButton(onClick = {
+                        val intent = ObdSweepExport.shareCanFramesIntent(context, frames)
+                        if (intent != null) {
+                            context.startActivity(android.content.Intent.createChooser(intent, shareChooserTitle))
+                        }
+                    }) {
+                        Text(stringResource(R.string.obd_sweep_share))
+                    }
+                }
+            }
+        },
+        title = {
+            Text(
+                if (running) {
+                    stringResource(R.string.bike_info_can_monitor_running, frames.size)
+                } else if (frames.isNotEmpty()) {
+                    stringResource(R.string.bike_info_can_monitor_done, frames.size)
+                } else {
+                    stringResource(R.string.bike_info_can_monitor_title)
+                },
+                color = Color.White
+            )
+        },
+        text = {
+            Column(modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                if (frames.isEmpty()) {
+                    Text(
+                        stringResource(R.string.bike_info_can_monitor_intro),
+                        color = TelemetryOnSurfaceMuted,
+                        fontSize = 12.sp
+                    )
+                } else {
+                    frames.takeLast(300).forEach { frame ->
+                        Text(frame, color = Color(0xFFCCCCCC), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            }
+        },
+        containerColor = Color(0xFF1C1C1C)
+    )
 }

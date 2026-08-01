@@ -155,6 +155,12 @@ class TelemetryService : Service() {
         bluetoothOBDManager?.trySecuritySessionProbe()
     }
 
+    val canMonitorRunning get() = bluetoothOBDManager?.canMonitorRunning
+    val canMonitorFrames get() = bluetoothOBDManager?.canMonitorFrames
+
+    suspend fun runCanMonitor(durationSeconds: Int): List<String> =
+        bluetoothOBDManager?.startCanMonitor(durationSeconds) ?: emptyList()
+
     override fun onCreate() {
         super.onCreate()
         DiagnosticLog.init(this)

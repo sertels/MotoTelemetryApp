@@ -259,6 +259,14 @@ class DashboardViewModel : ViewModel() {
     val obdPidStatus = _obdPidStatus.asStateFlow()
     private var obdPidStatusCollectJob: Job? = null
 
+    private val _canMonitorRunning = MutableStateFlow(false)
+    val canMonitorRunning = _canMonitorRunning.asStateFlow()
+    private var canMonitorRunningCollectJob: Job? = null
+
+    private val _canMonitorFrames = MutableStateFlow<List<String>>(emptyList())
+    val canMonitorFrames = _canMonitorFrames.asStateFlow()
+    private var canMonitorFramesCollectJob: Job? = null
+
     // Fixed for the service's lifetime rather than a flow - the source is chosen once in
     // onCreate() and never swapped, so this only needs re-reading on (re)bind.
     private val _obdSimulated = MutableStateFlow(false)
@@ -341,6 +349,14 @@ class DashboardViewModel : ViewModel() {
             obdPidStatusCollectJob = telemetryService?.obdPidStatus?.let { flow ->
                 viewModelScope.launch { flow.collect { _obdPidStatus.value = it } }
             }
+            canMonitorRunningCollectJob?.cancel()
+            canMonitorRunningCollectJob = telemetryService?.canMonitorRunning?.let { flow ->
+                viewModelScope.launch { flow.collect { _canMonitorRunning.value = it } }
+            }
+            canMonitorFramesCollectJob?.cancel()
+            canMonitorFramesCollectJob = telemetryService?.canMonitorFrames?.let { flow ->
+                viewModelScope.launch { flow.collect { _canMonitorFrames.value = it } }
+            }
             maxLeanLeftCollectJob?.cancel()
             maxLeanLeftCollectJob = telemetryService?.maxLeanLeft?.let { flow ->
                 viewModelScope.launch { flow.collect { _maxLeanLeft.value = it } }
@@ -389,6 +405,10 @@ class DashboardViewModel : ViewModel() {
             _obdRawData.value = emptyMap()
             obdPidStatusCollectJob?.cancel()
             _obdPidStatus.value = emptyMap()
+            canMonitorRunningCollectJob?.cancel()
+            _canMonitorRunning.value = false
+            canMonitorFramesCollectJob?.cancel()
+            _canMonitorFrames.value = emptyList()
             maxLeanLeftCollectJob?.cancel()
             maxLeanRightCollectJob?.cancel()
             maxLeanLeftSourceCollectJob?.cancel()
@@ -430,6 +450,15 @@ class DashboardViewModel : ViewModel() {
     fun runSecuritySessionProbe() {
         obdSweepJob = viewModelScope.launch {
             telemetryService?.runSecuritySessionProbe()
+        }
+    }
+
+    private var canMonitorJob: Job? = null
+
+    fun runCanMonitor(durationSeconds: Int) {
+        canMonitorJob?.cancel()
+        canMonitorJob = viewModelScope.launch {
+            telemetryService?.runCanMonitor(durationSeconds)
         }
     }
 
@@ -475,6 +504,10 @@ class DashboardViewModel : ViewModel() {
         _obdRawData.value = emptyMap()
         obdPidStatusCollectJob?.cancel()
         _obdPidStatus.value = emptyMap()
+        canMonitorRunningCollectJob?.cancel()
+        _canMonitorRunning.value = false
+        canMonitorFramesCollectJob?.cancel()
+        _canMonitorFrames.value = emptyList()
         maxLeanLeftCollectJob?.cancel()
         maxLeanRightCollectJob?.cancel()
         maxLeanLeftSourceCollectJob?.cancel()

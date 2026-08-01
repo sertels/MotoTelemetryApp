@@ -63,6 +63,12 @@ class BluetoothOBDManager(
         _pidStatus.value = _pidStatus.value + (command to ok)
     }
 
+    private val _canMonitorRunning = MutableStateFlow(false)
+    override val canMonitorRunning = _canMonitorRunning.asStateFlow()
+
+    private val _canMonitorFrames = MutableStateFlow<List<String>>(emptyList())
+    override val canMonitorFrames = _canMonitorFrames.asStateFlow()
+
     // Common Bluetooth SPP adapter names in the wild (ELM327 clones ship under many brands),
     // used only as a first-connect fallback before the user has picked a device explicitly.
     private val knownAdapterNameHints = listOf("OBD", "ELM327", "ELM", "VLINK", "V-LINK", "ICAR", "VGATE", "OBDLINK")
@@ -261,6 +267,87 @@ class BluetoothOBDManager(
             consecutiveWriteFailures++
             DiagnosticLog.e(tag, "Komut gönderme hatası: ${e.message}")
         }
+    }
+
+    // ATMA (Monitor All) is passive/read-only - the adapter never transmits anything to the bus,
+    // it just relays whatever's already flowing, so unlike trySecuritySessionProbe() this carries
+    // no risk to the ECU. Used to find which raw CAN ID carries lean angle: per external advice
+    // (2026-08-01), a cornering-ABS/TCS bike has an IMU broadcasting roll/pitch/yaw continuously
+    // at 50-100Hz rather than answering request/response queries, which would explain why the
+    // UDS DID this app currently polls for it (22D10D) has never been reliably confirmed. Method:
+    // capture a window while someone tilts the bike side to side, then compare frames by eye (or
+    // share the log) for the one CAN ID whose bytes move with the tilt.
+    //
+    // Monitor mode and the normal request/response poll loop cannot share the serial link at the
+    // same time, so this pauses dataLoopJob for the capture window and always restarts it after.
+    override suspend fun startCanMonitor(durationSeconds: Int): List<String> {
+        if (!_isConnected.value) return emptyList()
+        val wasPolling = dataLoopJob != null
+        dataLoopJob?.cancel()
+        dataLoopJob = null
+        _canMonitorRunning.value = true
+        _canMonitorFrames.value = emptyList()
+        val frames = mutableListOf<String>()
+        try {
+            withContext(Dispatchers.IO) {
+                ioMutex.withLock {
+                    try {
+                        outputStream?.write("ATMA\r".toByteArray())
+                        outputStream?.flush()
+                    } catch (_: IOException) {
+                    }
+                    val deadline = System.currentTimeMillis() + durationSeconds * 1000L
+                    val buffer = ByteArray(1024)
+                    val lineBuilder = StringBuilder()
+                    while (System.currentTimeMillis() < deadline) {
+                        val bytes = try {
+                            inputStream?.read(buffer) ?: break
+                        } catch (_: IOException) {
+                            break
+                        }
+                        if (bytes == -1) break
+                        val chunk = String(buffer, 0, bytes)
+                        for (c in chunk) {
+                            if (c == '\r' || c == '\n') {
+                                val line = lineBuilder.toString().trim()
+                                if (line.isNotEmpty()) {
+                                    frames.add(line)
+                                    _canMonitorFrames.value = frames.toList()
+                                }
+                                lineBuilder.clear()
+                            } else {
+                                lineBuilder.append(c)
+                            }
+                        }
+                    }
+                    // Sending any character stops monitor mode and returns the adapter to the
+                    // '>' prompt (ELM327 datasheet) - drain the echo/prompt afterward so it
+                    // doesn't get misread as the start of the next real command's response.
+                    try {
+                        outputStream?.write(" ".toByteArray())
+                        outputStream?.flush()
+                    } catch (_: IOException) {
+                    }
+                    delay(200.milliseconds)
+                    try {
+                        withTimeoutOrNull(500.milliseconds) {
+                            val drain = ByteArray(256)
+                            while (true) {
+                                val n = inputStream?.read(drain) ?: break
+                                if (n <= 0) break
+                            }
+                        }
+                    } catch (_: IOException) {
+                    }
+                }
+            }
+        } finally {
+            _canMonitorRunning.value = false
+            if (wasPolling) {
+                dataLoopJob = dataLoopScope.launch { startDataLoop() }
+            }
+        }
+        return frames
     }
 
     private suspend fun readResponse(): String {
