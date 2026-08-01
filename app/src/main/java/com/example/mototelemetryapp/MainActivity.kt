@@ -639,6 +639,7 @@ class MainActivity : AppCompatActivity() {
                                     obdSweepResults = obdSweepResults,
                                     obdSweepProgress = obdSweepProgress,
                                     onRunObdSweep = { dashboardViewModel.runObdSweep() },
+                                    onRunStandardPidSweep = { dashboardViewModel.runStandardPidSweep() },
                                     onCancelObdSweep = { dashboardViewModel.cancelObdSweep() }
                                 )
                             }

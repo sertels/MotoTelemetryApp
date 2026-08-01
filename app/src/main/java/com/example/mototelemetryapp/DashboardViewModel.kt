@@ -420,6 +420,12 @@ class DashboardViewModel : ViewModel() {
         }
     }
 
+    fun runStandardPidSweep() {
+        obdSweepJob = viewModelScope.launch {
+            telemetryService?.runStandardPidSweep()
+        }
+    }
+
     fun cancelObdSweep() {
         obdSweepJob?.cancel()
         obdSweepJob = null

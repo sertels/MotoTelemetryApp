@@ -137,6 +137,8 @@
     <string name="bike_info_check_engine_count">CHECK ENGINE · %1$d code(s)</string>
     <string name="bike_info_sweep_title">Look for more signals</string>
     <string name="bike_info_sweep_hint">ABS faults, EGT — not mapped yet</string>
+    <string name="bike_info_standard_sweep_title">Scan standard PID support</string>
+    <string name="bike_info_standard_sweep_hint">Asks the ECU directly which standard sensors it supports - safe, official OBD-II query</string>
     <string name="g_force_lat">LATERAL G</string>
     <string name="g_force_lon">LONG. G</string>
 </resources>

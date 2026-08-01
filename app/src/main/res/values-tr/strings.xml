@@ -137,6 +137,8 @@
     <string name="bike_info_check_engine_count">MOTOR ARIZASI · %1$d kod</string>
     <string name="bike_info_sweep_title">Daha fazla sinyal ara</string>
     <string name="bike_info_sweep_hint">ABS arızaları, egzoz sıcaklığı — henüz eşlenmedi</string>
+    <string name="bike_info_standard_sweep_title">Standart PID desteğini tara</string>
+    <string name="bike_info_standard_sweep_hint">ECU\'ya hangi standart sensörleri desteklediğini doğrudan sorar - güvenli, resmi OBD-II sorgusu</string>
     <string name="g_force_lat">YANAL G</string>
     <string name="g_force_lon">BOYUNA G</string>
 </resources>

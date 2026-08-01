@@ -70,6 +70,7 @@ fun BikeInfoScreen(
     obdSweepResults: List<ObdSweepEntry>,
     obdSweepProgress: Pair<Int, Int> = 0 to 0,
     onRunObdSweep: () -> Unit,
+    onRunStandardPidSweep: () -> Unit,
     onCancelObdSweep: () -> Unit = {}
 ) {
     Column(
@@ -192,6 +193,18 @@ fun BikeInfoScreen(
         PidMapTable(pidStatus = pidStatus)
 
         SweepCta(
+            title = stringResource(R.string.bike_info_standard_sweep_title),
+            hint = stringResource(R.string.bike_info_standard_sweep_hint),
+            running = obdSweepRunning,
+            results = obdSweepResults,
+            progress = obdSweepProgress,
+            onRunSweep = onRunStandardPidSweep,
+            onCancelSweep = onCancelObdSweep
+        )
+
+        SweepCta(
+            title = stringResource(R.string.bike_info_sweep_title),
+            hint = stringResource(R.string.bike_info_sweep_hint),
             running = obdSweepRunning,
             results = obdSweepResults,
             progress = obdSweepProgress,
@@ -445,6 +458,8 @@ private fun PidMapTable(pidStatus: Map<String, Boolean>) {
 
 @Composable
 private fun SweepCta(
+    title: String,
+    hint: String,
     running: Boolean,
     results: List<ObdSweepEntry>,
     progress: Pair<Int, Int> = 0 to 0,
@@ -467,9 +482,9 @@ private fun SweepCta(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(stringResource(R.string.bike_info_sweep_title), color = Color(0xFFCCCCCC), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text(title, color = Color(0xFFCCCCCC), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             Text(
-                stringResource(R.string.bike_info_sweep_hint),
+                hint,
                 color = TelemetryOnSurfaceMuted,
                 fontSize = 10.5.sp,
                 modifier = Modifier.padding(top = 2.dp)

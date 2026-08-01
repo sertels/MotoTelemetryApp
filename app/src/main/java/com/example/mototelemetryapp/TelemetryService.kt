@@ -146,6 +146,10 @@ class TelemetryService : Service() {
         bluetoothOBDManager?.sweepHeadersAndDids()
     }
 
+    suspend fun runStandardPidSweep() {
+        bluetoothOBDManager?.sweepStandardPidSupport()
+    }
+
     override fun onCreate() {
         super.onCreate()
         DiagnosticLog.init(this)

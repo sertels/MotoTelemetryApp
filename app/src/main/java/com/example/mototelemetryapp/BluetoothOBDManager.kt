@@ -471,6 +471,58 @@ class BluetoothOBDManager(
         }
     }
 
+    // Mode 01 PID 00 (and 20/40/60...) is the official OBD-II way to ask "which standard PIDs do
+    // you support" - a 4-byte bitmask covering the next 32 PIDs, with its own last bit saying
+    // whether to keep going. Every OBD-II-compliant ECU must answer this, unlike the
+    // manufacturer UDS DIDs sweepHeadersAndDids() probes - so this is a completely safe way to
+    // find out for certain whether e.g. fuel rate/level (015E/012F, "NO DATA" on this ECU) are
+    // genuinely unsupported rather than guessed-wrong, without relying on a third-party app's
+    // dump or trial and error. Reuses the same sweepRunning/sweepResults/sweepProgress flows as
+    // the DID sweep so the existing dialog UI needs no changes.
+    override suspend fun sweepStandardPidSupport() {
+        if (!_isConnected.value) return
+        _sweepRunning.value = true
+        _sweepResults.value = emptyList()
+        try {
+            withContext(Dispatchers.IO) {
+                ioMutex.withLock {
+                    setHeader("7E0")
+                    val supported = mutableListOf<Int>()
+                    var base = 0x00
+                    var blocksQueried = 0
+                    while (blocksQueried < 6) { // caps at PID 0xC0 - far past what this ECU needs
+                        val baseHex = base.toString(16).uppercase().padStart(2, '0')
+                        sendCommand("01$baseHex")
+                        delay(80.milliseconds)
+                        val response = readResponse().replace(" ", "")
+                        blocksQueried++
+                        _sweepProgress.value = blocksQueried to 6
+                        val prefix = "41$baseHex"
+                        if (!response.contains(prefix)) break
+                        val hex = response.substringAfter(prefix).take(8)
+                        if (hex.length < 8) break
+                        val mask = java.lang.Long.parseLong(hex, 16)
+                        for (bit in 0 until 32) {
+                            // bit 31 (MSB) = PID base+01 ... bit 0 (LSB) = PID base+20
+                            if ((mask shr bit) and 1L == 1L) supported.add(base + (32 - bit))
+                        }
+                        // The LSB doubles as "next block (PID base+20 itself) is supported" - the
+                        // standard signal for whether continuing is worth it.
+                        if ((mask and 1L) == 0L) break
+                        base += 0x20
+                    }
+                    setHeader("7E0")
+                    _sweepResults.value = supported.sorted().map { pid ->
+                        ObdSweepEntry("7E0", "01" + pid.toString(16).uppercase().padStart(2, '0'), "SUPPORTED")
+                    }
+                }
+            }
+        } finally {
+            _sweepRunning.value = false
+            _sweepProgress.value = 0 to 0
+        }
+    }
+
     private fun parseCoolant(response: String): Int {
         // 41 05 XX -> XX - 40
         return try {

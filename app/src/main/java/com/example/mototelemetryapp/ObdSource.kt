@@ -51,6 +51,10 @@ interface ObdSource {
         headers: List<String> = BluetoothOBDManager.DEFAULT_SWEEP_HEADERS,
         dids: List<String> = BluetoothOBDManager.DEFAULT_SWEEP_DIDS
     )
+
+    // Official OBD-II standard-PID-support discovery (mode 01 PID 00/20/40...) - safe on any
+    // compliant ECU, unlike sweepHeadersAndDids()'s manufacturer-DID guessing.
+    suspend fun sweepStandardPidSupport()
 }
 
 // Whether the simulated sources should be used instead of the real Bluetooth adapter and

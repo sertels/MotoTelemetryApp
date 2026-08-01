@@ -123,6 +123,28 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
         }
     }
 
+    // Mirrors the real standard-PID-support scan's shape without a real ECU to ask - just
+    // reports every standard (non-UDS) mode 01 PID this simulator already knows about as
+    // supported, so the dialog can be exercised without a bike attached.
+    override suspend fun sweepStandardPidSupport() {
+        if (!_isConnected.value) return
+        _sweepRunning.value = true
+        _sweepResults.value = emptyList()
+        val standardPids = BluetoothOBDManager.CONFIRMED_PID_MAP
+            .filter { it.header == "7E0" && it.command.startsWith("01") && it.command.length == 4 }
+        _sweepProgress.value = 0 to standardPids.size
+        try {
+            standardPids.forEachIndexed { index, mapping ->
+                delay(SWEEP_STEP_MS.milliseconds)
+                _sweepResults.value = _sweepResults.value + ObdSweepEntry("7E0", mapping.command, "SUPPORTED")
+                _sweepProgress.value = (index + 1) to standardPids.size
+            }
+        } finally {
+            _sweepRunning.value = false
+            _sweepProgress.value = 0 to 0
+        }
+    }
+
     private fun sweepResponseFor(header: String, did: String): String {
         val known = BluetoothOBDManager.CONFIRMED_PID_MAP.any {
             it.header == header && it.command.equals("22$did", ignoreCase = true)
