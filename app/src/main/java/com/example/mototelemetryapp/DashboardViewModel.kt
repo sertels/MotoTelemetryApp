@@ -255,6 +255,10 @@ class DashboardViewModel : ViewModel() {
     val obdRawData = _obdRawData.asStateFlow()
     private var obdRawDataCollectJob: Job? = null
 
+    private val _obdPidStatus = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val obdPidStatus = _obdPidStatus.asStateFlow()
+    private var obdPidStatusCollectJob: Job? = null
+
     // Fixed for the service's lifetime rather than a flow - the source is chosen once in
     // onCreate() and never swapped, so this only needs re-reading on (re)bind.
     private val _obdSimulated = MutableStateFlow(false)
@@ -333,6 +337,10 @@ class DashboardViewModel : ViewModel() {
             obdRawDataCollectJob = telemetryService?.obdRawData?.let { flow ->
                 viewModelScope.launch { flow.collect { _obdRawData.value = it } }
             }
+            obdPidStatusCollectJob?.cancel()
+            obdPidStatusCollectJob = telemetryService?.obdPidStatus?.let { flow ->
+                viewModelScope.launch { flow.collect { _obdPidStatus.value = it } }
+            }
             maxLeanLeftCollectJob?.cancel()
             maxLeanLeftCollectJob = telemetryService?.maxLeanLeft?.let { flow ->
                 viewModelScope.launch { flow.collect { _maxLeanLeft.value = it } }
@@ -379,6 +387,8 @@ class DashboardViewModel : ViewModel() {
             _obdDtcCodes.value = emptyList()
             obdRawDataCollectJob?.cancel()
             _obdRawData.value = emptyMap()
+            obdPidStatusCollectJob?.cancel()
+            _obdPidStatus.value = emptyMap()
             maxLeanLeftCollectJob?.cancel()
             maxLeanRightCollectJob?.cancel()
             maxLeanLeftSourceCollectJob?.cancel()
@@ -450,6 +460,8 @@ class DashboardViewModel : ViewModel() {
         _obdDtcCodes.value = emptyList()
         obdRawDataCollectJob?.cancel()
         _obdRawData.value = emptyMap()
+        obdPidStatusCollectJob?.cancel()
+        _obdPidStatus.value = emptyMap()
         maxLeanLeftCollectJob?.cancel()
         maxLeanRightCollectJob?.cancel()
         maxLeanLeftSourceCollectJob?.cancel()

@@ -136,6 +136,10 @@ class TelemetryService : Service() {
     // the recorded TelemetryRecord shape.
     val obdRawData get() = bluetoothOBDManager?.obdData
 
+    // Per-PID last-response-matched-expected flag, so the Bike Info sensor map can show which
+    // "confirmed" PIDs are actually answering right now instead of just listing them statically.
+    val obdPidStatus get() = bluetoothOBDManager?.pidStatus
+
     suspend fun clearObdDtcs(): Boolean = bluetoothOBDManager?.clearDtcs() ?: false
 
     suspend fun runObdSweep() {

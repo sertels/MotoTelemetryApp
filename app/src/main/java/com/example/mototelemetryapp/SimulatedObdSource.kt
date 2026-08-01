@@ -28,6 +28,12 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
     private val _obdData = MutableStateFlow<Map<String, Int>>(emptyMap())
     override val obdData = _obdData.asStateFlow()
 
+    // The simulator never fails a read, so every mapped PID is always "confirmed" while
+    // connected - matches BluetoothOBDManager.CONFIRMED_PID_MAP's keys exactly.
+    override val pidStatus = MutableStateFlow(
+        BluetoothOBDManager.CONFIRMED_PID_MAP.associate { it.command to true }
+    ).asStateFlow()
+
     private val _sweepRunning = MutableStateFlow(false)
     override val sweepRunning = _sweepRunning.asStateFlow()
 

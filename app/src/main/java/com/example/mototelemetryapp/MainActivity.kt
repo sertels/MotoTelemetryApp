@@ -613,11 +613,13 @@ class MainActivity : AppCompatActivity() {
                                     if (!isBound) dashboardViewModel.bindService(context)
                                 }
                                 val obdRawData by dashboardViewModel.obdRawData.collectAsState()
+                                val obdPidStatus by dashboardViewModel.obdPidStatus.collectAsState()
                                 val serviceRemainingKm by dashboardViewModel.serviceRemainingKm.collectAsState()
                                 LaunchedEffect(Unit) { dashboardViewModel.fetchDashboardSummary(context) }
 
                                 BikeInfoScreen(
                                     obdConnected = obdConnected,
+                                    pidStatus = obdPidStatus,
                                     odometerKm = obdRawData["ODOMETER"],
                                     distanceSinceClearKm = obdRawData["DIST_SINCE_CLEAR"],
                                     // Prefer a figure the ECU reports over the app's own estimate

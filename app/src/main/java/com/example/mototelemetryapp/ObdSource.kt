@@ -16,6 +16,12 @@ interface ObdSource {
     // Raw PID map, keyed by the names pollOnce() produces (RPM, SPEED, GEAR, ...).
     val obdData: StateFlow<Map<String, Int>>
 
+    // Per-command (keyed like BluetoothOBDManager.PidMapping.command, e.g. "222503") whether the
+    // last response actually matched what parsing expected - a raw value of 0 is otherwise
+    // indistinguishable from a genuine 0 reading (odometer stuck at 0 read as "confirmed working"
+    // was reported as misleading on a real ride, 2026-08-01). Missing key = not queried yet.
+    val pidStatus: StateFlow<Map<String, Boolean>>
+
     val sweepRunning: StateFlow<Boolean>
     val sweepResults: StateFlow<List<ObdSweepEntry>>
     val sweepProgress: StateFlow<Pair<Int, Int>>

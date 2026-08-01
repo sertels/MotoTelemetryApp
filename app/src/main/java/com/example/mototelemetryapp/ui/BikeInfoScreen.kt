@@ -45,6 +45,12 @@ private const val MIN_SPEED_FOR_ECONOMY_KMH = 5
 @Composable
 fun BikeInfoScreen(
     obdConnected: Boolean,
+    // Per-command (keys match CONFIRMED_PID_MAP.command) live status: true = last response
+    // matched what parsing expected, false = it didn't (negative/NO DATA/garbage), missing =
+    // not queried yet this connection. Lets the sensor map below show what's *actually* working
+    // right now instead of just listing commands as if all were equally "confirmed" - user
+    // feedback after odometer/fuel turned out to be silently broken despite being listed, 2026-08-01.
+    pidStatus: Map<String, Boolean>,
     odometerKm: Int?,
     // Standard mode 01 PID 0131, NOT the real lifetime odometer above (that DID answers
     // unsupported on this ECU) - shown separately and honestly labeled rather than silently
@@ -176,7 +182,7 @@ fun BikeInfoScreen(
         DiagnosticsCard(obdConnected = obdConnected, obdMilOn = obdMilOn, dtcCodes = obdDtcCodes, onClearDtcs = onClearObdDtcs)
 
         SectionLabel(stringResource(R.string.bike_info_sensor_map))
-        PidMapTable()
+        PidMapTable(pidStatus = pidStatus)
 
         SweepCta(
             running = obdSweepRunning,
@@ -379,7 +385,7 @@ private fun DiagnosticsCard(obdConnected: Boolean, obdMilOn: Boolean, dtcCodes: 
 }
 
 @Composable
-private fun PidMapTable() {
+private fun PidMapTable(pidStatus: Map<String, Boolean>) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -402,7 +408,29 @@ private fun PidMapTable() {
                     fontFamily = FontFamily.Monospace,
                     modifier = Modifier.width(110.dp)
                 )
-                Text(text = mapping.signal, color = Color(0xFFCCCCCC), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    text = mapping.signal,
+                    color = Color(0xFFCCCCCC),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f)
+                )
+                // null (not queried yet this connection) reads as a neutral dot rather than a
+                // false accusation of failure - only an actual mismatched/negative response
+                // (false) or a real successful parse (true) get a color.
+                val ok = pidStatus[mapping.command]
+                Box(
+                    modifier = Modifier
+                        .size(7.dp)
+                        .clip(CircleShape)
+                        .background(
+                            when (ok) {
+                                true -> TelemetryAccent
+                                false -> Color(0xFFE05C5C)
+                                null -> Color(0xFF3A3A3A)
+                            }
+                        )
+                )
             }
         }
     }

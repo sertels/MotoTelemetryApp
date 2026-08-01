@@ -52,6 +52,16 @@ class BluetoothOBDManager(
     private val _obdData = MutableStateFlow<Map<String, Int>>(emptyMap())
     override val obdData = _obdData.asStateFlow()
 
+    private val _pidStatus = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    override val pidStatus = _pidStatus.asStateFlow()
+
+    // Keyed the same as PidMapping.command (the request, e.g. "222503") regardless of whether
+    // the underlying parse function matches on that or on the positive-response prefix - callers
+    // always pass the request-side key so the Bike Info table can join on CONFIRMED_PID_MAP directly.
+    private fun markPidStatus(command: String, ok: Boolean) {
+        _pidStatus.value = _pidStatus.value + (command to ok)
+    }
+
     // Common Bluetooth SPP adapter names in the wild (ELM327 clones ship under many brands),
     // used only as a first-connect fallback before the user has picked a device explicitly.
     private val knownAdapterNameHints = listOf("OBD", "ELM327", "ELM", "VLINK", "V-LINK", "ICAR", "VGATE", "OBDLINK")
@@ -454,8 +464,12 @@ class BluetoothOBDManager(
             val clean = response.replace(" ", "")
             if (clean.contains("4105")) {
                 val hex = clean.substringAfter("4105").take(2)
+                markPidStatus("0105", true)
                 Integer.parseInt(hex, 16) - 40
-            } else 0
+            } else {
+                markPidStatus("0105", false)
+                0
+            }
         } catch (_: Exception) { 0 }
     }
 
@@ -465,9 +479,11 @@ class BluetoothOBDManager(
             val clean = response.replace(" ", "")
             if (clean.contains("622503")) {
                 val hex = clean.substringAfter("622503").take(8)
+                markPidStatus("222503", true)
                 java.lang.Long.parseLong(hex, 16)
             } else {
                 logUnexpectedResponseOnce("222503", response)
+                markPidStatus("222503", false)
                 0L
             }
         } catch (_: Exception) { 0L }
@@ -479,9 +495,11 @@ class BluetoothOBDManager(
             val clean = response.replace(" ", "")
             if (clean.contains("4131")) {
                 val hex = clean.substringAfter("4131").take(4)
+                markPidStatus("0131", true)
                 Integer.parseInt(hex, 16)
             } else {
                 logUnexpectedResponseOnce("0131", response)
+                markPidStatus("0131", false)
                 0
             }
         } catch (_: Exception) { 0 }
@@ -493,9 +511,11 @@ class BluetoothOBDManager(
             val clean = response.replace(" ", "")
             if (clean.contains("415E")) {
                 val hex = clean.substringAfter("415E").take(4)
+                markPidStatus("015E", true)
                 Integer.parseInt(hex, 16) / 20f
             } else {
                 logUnexpectedResponseOnce("015E", response)
+                markPidStatus("015E", false)
                 0f
             }
         } catch (_: Exception) { 0f }
@@ -507,9 +527,11 @@ class BluetoothOBDManager(
             val clean = response.replace(" ", "")
             if (clean.contains("412F")) {
                 val hex = clean.substringAfter("412F").take(2)
+                markPidStatus("012F", true)
                 (Integer.parseInt(hex, 16) * 100) / 255
             } else {
                 logUnexpectedResponseOnce("012F", response)
+                markPidStatus("012F", false)
                 0
             }
         } catch (_: Exception) { 0 }
@@ -522,10 +544,12 @@ class BluetoothOBDManager(
             if (clean.contains("62D10D")) {
                 val hex = clean.substringAfter("62D10D").take(4)
                 val raw = Integer.parseInt(hex, 16).toShort().toInt()
+                markPidStatus("22D10D", true)
                 // Genelde 0.1 çarpanı ile dereceye çevrilir
                 (raw * 0.1).toInt()
             } else {
                 logUnexpectedResponseOnce("22D10D", response)
+                markPidStatus("22D10D", false)
                 0
             }
         } catch (_: Exception) { 0 }
@@ -536,8 +560,12 @@ class BluetoothOBDManager(
             val clean = response.replace(" ", "")
             if (clean.contains("410C")) {
                 val hex = clean.substringAfter("410C").take(4)
+                markPidStatus("010C", true)
                 Integer.parseInt(hex, 16) / 4
-            } else 0
+            } else {
+                markPidStatus("010C", false)
+                0
+            }
         } catch (_: Exception) { 0 }
     }
 
@@ -546,8 +574,12 @@ class BluetoothOBDManager(
             val clean = response.replace(" ", "")
             if (clean.contains("410D")) {
                 val hex = clean.substringAfter("410D").take(2)
+                markPidStatus("010D", true)
                 Integer.parseInt(hex, 16)
-            } else 0
+            } else {
+                markPidStatus("010D", false)
+                0
+            }
         } catch (_: Exception) { 0 }
     }
 
@@ -565,6 +597,7 @@ class BluetoothOBDManager(
                 // failures) so the next real shift leaves the actual raw byte in the diagnostic
                 // log instead of us having to guess at the encoding again.
                 val gear = if (rawGear == 15) 0 else rawGear
+                markPidStatus("2243F7", true)
                 // A logging hiccup must never corrupt the actual parsed gear - this whole
                 // function's own catch-all below would otherwise turn a perfectly good read
                 // into a silent 0 ("N"), which a unit test caught immediately.
@@ -578,6 +611,7 @@ class BluetoothOBDManager(
                 gear
             } else {
                 logUnexpectedResponseOnce("2243F7", response)
+                markPidStatus("2243F7", false)
                 0
             }
         } catch (_: Exception) { 0 }
@@ -589,8 +623,12 @@ class BluetoothOBDManager(
             val clean = response.replace(" ", "")
             if (clean.contains("4111")) {
                 val hex = clean.substringAfter("4111").take(2)
+                markPidStatus("0111", true)
                 (Integer.parseInt(hex, 16) * 100) / 255
-            } else 0
+            } else {
+                markPidStatus("0111", false)
+                0
+            }
         } catch (_: Exception) { 0 }
     }
 
@@ -601,8 +639,10 @@ class BluetoothOBDManager(
             val clean = response.replace(" ", "")
             if (clean.contains("4101")) {
                 val statusByte = Integer.parseInt(clean.substringAfter("4101").take(2), 16)
+                markPidStatus("0101", true)
                 ((statusByte and 0x80) != 0) to (statusByte and 0x7F)
             } else {
+                markPidStatus("0101", false)
                 false to 0
             }
         } catch (_: Exception) {
@@ -642,16 +682,21 @@ class BluetoothOBDManager(
     }
 
     internal fun parseBrake(response: String, prefix: String): Int {
-        // Response format: 62 [PID] [Value]
+        // Response format: 62 [PID] [Value]. requestDid mirrors prefix but with the request
+        // service byte (22) instead of the positive-response one (62), matching how
+        // PidMapping.command/CONFIRMED_PID_MAP key brakes ("222B05"/"222B06").
+        val requestDid = "2" + prefix.drop(1)
         return try {
             val clean = response.replace(" ", "")
             if (clean.contains(prefix)) {
                 val hex = clean.substringAfter(prefix).take(2)
+                markPidStatus(requestDid, true)
                 // BMW fren basıncı için genelde bar cinsinden veri döner.
                 // Basit bir ölçekleme yapıyoruz.
                 Integer.parseInt(hex, 16)
             } else {
                 logUnexpectedResponseOnce(prefix, response)
+                markPidStatus(requestDid, false)
                 0
             }
         } catch (_: Exception) { 0 }
@@ -665,6 +710,7 @@ class BluetoothOBDManager(
             socket?.close()
             _milOn.value = false
             _dtcCodes.value = emptyList()
+            _pidStatus.value = emptyMap()
             currentHeader = null
             Log.d(tag, "OBD2 Bağlantısı kesildi.")
         } catch (e: IOException) {
