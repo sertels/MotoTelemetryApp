@@ -305,11 +305,14 @@ class BluetoothOBDManager(
                     } catch (_: IOException) {
                     }
 
-                    try {
-                        outputStream?.write("ATMA\r".toByteArray())
-                        outputStream?.flush()
-                    } catch (_: IOException) {
+                    fun sendAtma() {
+                        try {
+                            outputStream?.write("ATMA\r".toByteArray())
+                            outputStream?.flush()
+                        } catch (_: IOException) {
+                        }
                     }
+                    sendAtma()
                     val deadline = System.currentTimeMillis() + durationSeconds * 1000L
                     val buffer = ByteArray(1024)
                     val lineBuilder = StringBuilder()
@@ -335,7 +338,26 @@ class BluetoothOBDManager(
                                 val line = lineBuilder.toString().trim()
                                 if (line.isNotEmpty()) {
                                     frames.add(line)
-                                    _canMonitorFrames.value = frames.toList()
+                                    // A long capture (the whole point of supporting durations
+                                    // beyond a few seconds) can gather thousands of frames at
+                                    // 50-100Hz - copying the full list into the StateFlow on every
+                                    // single one would mean thousands of list copies/recompositions
+                                    // per second. Live frame count only needs to look responsive,
+                                    // not update on literally every byte.
+                                    val isBufferFull = line.contains("BUFFER", ignoreCase = true) && line.contains("FULL", ignoreCase = true)
+                                    if (frames.size % 20 == 0 || isBufferFull) {
+                                        _canMonitorFrames.value = frames.toList()
+                                    }
+                                    // On a busy bus the adapter's internal message buffer fills
+                                    // faster than it can be drained over the Bluetooth serial
+                                    // link and it auto-stops, returning to the '>' prompt on its
+                                    // own (confirmed on a real capture, 2026-08-01 - stopped
+                                    // after only a few seconds with the engine running). For a
+                                    // longer requested duration, just start it again rather than
+                                    // ending the whole capture early - a few seconds of gap is a
+                                    // reasonable trade for still covering the full window asked
+                                    // for.
+                                    if (isBufferFull && System.currentTimeMillis() < deadline) sendAtma()
                                 }
                                 lineBuilder.clear()
                             } else {
@@ -343,6 +365,8 @@ class BluetoothOBDManager(
                             }
                         }
                     }
+                    _canMonitorFrames.value = frames.toList() // final flush past the throttled updates above
+
                     // Sending any character stops monitor mode and returns the adapter to the
                     // '>' prompt (ELM327 datasheet) - drain the echo/prompt afterward so it
                     // doesn't get misread as the start of the next real command's response.

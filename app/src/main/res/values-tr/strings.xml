@@ -152,8 +152,8 @@
     <string name="bike_info_risky_session_confirm_button">Devam et</string>
     <string name="bike_info_can_monitor_title">Ham CAN hattını dinle</string>
     <string name="bike_info_can_monitor_hint">Pasif, salt okunur - motoru yatırarak yatış açısını taşıyan CAN ID\'sini bul</string>
-    <string name="bike_info_can_monitor_intro">Başlat\'a bas, sonra motosikleti 8 saniye boyunca yakalanırken sağa-sola yatır. Sonra hangi ID\'nin byte\'larının yatışla değiştiğini karşılaştır.</string>
-    <string name="bike_info_can_monitor_start">Başlat (8sn)</string>
+    <string name="bike_info_can_monitor_intro">Bir süre seç, Başlat\'a bas, sonra yakalanırken motosikleti sağa-sola yatır (ya da daha uzun bir dökümü sür/rölantide tut - gerçek gösterge değerlerini zaman damgasıyla not al, sonra eşleştiririz). Bitince logu paylaş, hangi ID\'nin byte\'ları değişiyor karşılaştırırız.</string>
+    <string name="bike_info_can_monitor_start">Başlat (%1$dsn)</string>
     <string name="bike_info_can_monitor_running">Yakalanıyor… %1$d frame</string>
     <string name="bike_info_can_monitor_done">Yakalama bitti · %1$d frame</string>
     <string name="g_force_lat">YANAL G</string>

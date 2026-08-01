@@ -724,7 +724,12 @@ private fun CanMonitorDialog(
     onDismiss: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val durationSeconds = 8
+    // Longer options for a proper reverse-engineering dump (capture continuously, note down real
+    // dashboard readings with timestamps, correlate afterward) rather than just the original
+    // quick 8s tilt-test - BUFFER FULL restarts are now handled automatically in
+    // BluetoothOBDManager.startCanMonitor so a multi-minute capture no longer just stops early.
+    var durationSeconds by remember { mutableStateOf(8) }
+    val durationOptions = listOf(8, 30, 60, 300)
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
@@ -736,7 +741,7 @@ private fun CanMonitorDialog(
             Row {
                 if (!running) {
                     androidx.compose.material3.TextButton(onClick = { onRun(durationSeconds) }) {
-                        Text(stringResource(R.string.bike_info_can_monitor_start))
+                        Text(stringResource(R.string.bike_info_can_monitor_start, durationSeconds))
                     }
                 }
                 if (!running && frames.isNotEmpty()) {
@@ -766,6 +771,27 @@ private fun CanMonitorDialog(
         },
         text = {
             Column(modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                if (!running && frames.isEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        durationOptions.forEach { seconds ->
+                            val selected = seconds == durationSeconds
+                            Text(
+                                text = if (seconds < 60) "${seconds}s" else "${seconds / 60}dk",
+                                color = if (selected) Color.Black else Color(0xFFCCCCCC),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .background(
+                                        if (selected) TelemetryAccent else Color(0xFF2A2A2A),
+                                        RoundedCornerShape(100.dp)
+                                    )
+                                    .clickable { durationSeconds = seconds }
+                                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
                 if (frames.isEmpty()) {
                     Text(
                         stringResource(R.string.bike_info_can_monitor_intro),
