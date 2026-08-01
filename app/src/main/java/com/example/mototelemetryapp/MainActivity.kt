@@ -619,6 +619,7 @@ class MainActivity : AppCompatActivity() {
                                 BikeInfoScreen(
                                     obdConnected = obdConnected,
                                     odometerKm = obdRawData["ODOMETER"],
+                                    distanceSinceClearKm = obdRawData["DIST_SINCE_CLEAR"],
                                     // Prefer a figure the ECU reports over the app's own estimate
                                     // from ride history, which can only ever count rides this
                                     // phone recorded. Only the simulator supplies one today.

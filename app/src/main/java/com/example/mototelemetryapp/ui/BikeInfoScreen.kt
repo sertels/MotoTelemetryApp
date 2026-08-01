@@ -46,6 +46,10 @@ private const val MIN_SPEED_FOR_ECONOMY_KMH = 5
 fun BikeInfoScreen(
     obdConnected: Boolean,
     odometerKm: Int?,
+    // Standard mode 01 PID 0131, NOT the real lifetime odometer above (that DID answers
+    // unsupported on this ECU) - shown separately and honestly labeled rather than silently
+    // swapped in as "the odometer", since this one resets whenever DTCs are cleared.
+    distanceSinceClearKm: Int?,
     serviceRemainingKm: Int?,
     coolantC: Int?,
     fuelLevelPct: Int?,
@@ -113,6 +117,14 @@ fun BikeInfoScreen(
             if (serviceRemainingKm != null) {
                 Text(
                     text = "${stringResource(R.string.service)} · %,d ${stringResource(R.string.km_left)}".format(serviceRemainingKm),
+                    color = TelemetryOnSurfaceMuted,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            if (distanceSinceClearKm != null) {
+                Text(
+                    text = stringResource(R.string.bike_info_distance_since_clear, distanceSinceClearKm),
                     color = TelemetryOnSurfaceMuted,
                     fontSize = 11.sp,
                     modifier = Modifier.padding(top = 4.dp)

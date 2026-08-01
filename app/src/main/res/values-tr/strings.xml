@@ -122,6 +122,7 @@
     <string name="bike_info">Araç Bilgisi</string>
     <string name="bike_info_model">Voge 900DSX</string>
     <string name="bike_info_odometer_label">ECU kilometre sayacı</string>
+    <string name="bike_info_distance_since_clear">Son kod temizliğinden beri · %1$,d km (gerçek kilometre sayacı değil)</string>
     <string name="bike_info_engine_health">MOTOR SAĞLIĞI</string>
     <string name="bike_info_diagnostics">TANI</string>
     <string name="bike_info_sensor_map">ONAYLANMIŞ SENSÖR HARİTASI</string>

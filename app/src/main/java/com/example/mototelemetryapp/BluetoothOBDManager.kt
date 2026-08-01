@@ -101,6 +101,7 @@ class BluetoothOBDManager(
     // zero in the recorded data. Keyed by DID/PID and capped at one line each so a consistently
     // unsupported command can't flood the log across a whole ride.
     private val loggedUnexpectedResponses = mutableSetOf<String>()
+    private var lastLoggedGear: Int? = null
 
     private fun logUnexpectedResponseOnce(did: String, response: String) {
         if (loggedUnexpectedResponses.add(did)) {
@@ -366,6 +367,14 @@ class BluetoothOBDManager(
         sendCommand("222503")
         val odometer = parseOdometer(readResponse())
 
+        // Standard mode 01 PID (not the manufacturer 222503 DID above) - resets whenever DTCs
+        // are cleared, so it is NOT a real lifetime odometer, just a fallback so the Bike Info
+        // screen has one honestly-labeled real number instead of only a stuck-at-0 "odometer"
+        // (222503 answers "7F 22 31"/unsupported on this ECU - confirmed via a real ride,
+        // 2026-08-01). The user's other OBD app already reads this successfully.
+        sendCommand("0131")
+        val distanceSinceClear = parseDistanceSinceClear(readResponse())
+
         sendCommand("015E")
         val fuelRate = parseFuelRate(readResponse())
 
@@ -394,6 +403,7 @@ class BluetoothOBDManager(
             "LEAN_BIKE" to leanBike,
             "COOLANT" to coolant,
             "ODOMETER" to odometer.toInt(), // Lossy for Map, but we'll use a better way later
+            "DIST_SINCE_CLEAR" to distanceSinceClear,
             "FUEL_RATE" to (fuelRate * 100).toInt(), // Scale for Map
             "FUEL_LEVEL" to fuelLevel
         )
@@ -461,6 +471,20 @@ class BluetoothOBDManager(
                 0L
             }
         } catch (_: Exception) { 0L }
+    }
+
+    private fun parseDistanceSinceClear(response: String): Int {
+        // 41 31 AA BB -> AA*256 + BB, km
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains("4131")) {
+                val hex = clean.substringAfter("4131").take(4)
+                Integer.parseInt(hex, 16)
+            } else {
+                logUnexpectedResponseOnce("0131", response)
+                0
+            }
+        } catch (_: Exception) { 0 }
     }
 
     private fun parseFuelRate(response: String): Float {
@@ -534,8 +558,24 @@ class BluetoothOBDManager(
             if (clean.contains("6243F7")) {
                 val hex = clean.substringAfter("6243F7").take(2)
                 val rawGear = Integer.parseInt(hex, 16)
-                // BMW BMS-O genelde 0=N, 1-6=Gears. Bazı durumlarda 15=N.
-                if (rawGear == 15) 0 else rawGear
+                // BMW BMS-O genelde 0=N, 1-6=Gears. Bazı durumlarda 15=N. Only ever verified
+                // against this ECU's real Neutral byte - a rider reported shifting into 1st/2nd
+                // without the app's gear readout changing (2026-08-01), so this mapping may not
+                // hold for non-neutral values. Logged on every real change (not just parse
+                // failures) so the next real shift leaves the actual raw byte in the diagnostic
+                // log instead of us having to guess at the encoding again.
+                val gear = if (rawGear == 15) 0 else rawGear
+                // A logging hiccup must never corrupt the actual parsed gear - this whole
+                // function's own catch-all below would otherwise turn a perfectly good read
+                // into a silent 0 ("N"), which a unit test caught immediately.
+                if (gear != lastLoggedGear) {
+                    try {
+                        DiagnosticLog.w(tag, "Vites değişti: ham=0x$hex -> $gear (\"$response\")")
+                    } catch (_: Exception) {
+                    }
+                    lastLoggedGear = gear
+                }
+                gear
             } else {
                 logUnexpectedResponseOnce("2243F7", response)
                 0

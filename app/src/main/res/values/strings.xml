@@ -122,6 +122,7 @@
     <string name="bike_info">Bike Info</string>
     <string name="bike_info_model">Voge 900DSX</string>
     <string name="bike_info_odometer_label">ECU odometer</string>
+    <string name="bike_info_distance_since_clear">Since last DTC clear · %1$,d km (not the real odometer)</string>
     <string name="bike_info_engine_health">ENGINE HEALTH</string>
     <string name="bike_info_diagnostics">DIAGNOSTICS</string>
     <string name="bike_info_sensor_map">CONFIRMED SENSOR MAP</string>
