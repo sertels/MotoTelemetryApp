@@ -370,12 +370,7 @@ class MainActivity : AppCompatActivity() {
                                 onFetchDevices = { dashboardViewModel.getPairedObdDevices() },
                                 onConnect = { address -> dashboardViewModel.connectObd(context, address) },
                                 simulated = obdSimulated,
-                                onDisconnect = { dashboardViewModel.disconnectObd() },
-                                sweepRunning = obdSweepRunning,
-                                sweepResults = obdSweepResults,
-                                sweepProgress = obdSweepProgress,
-                                onRunSweep = { dashboardViewModel.runObdSweep() },
-                                onCancelSweep = { dashboardViewModel.cancelObdSweep() }
+                                onDisconnect = { dashboardViewModel.disconnectObd() }
                             )
                             Spacer(modifier = Modifier.width(2.dp))
                             IconButton(

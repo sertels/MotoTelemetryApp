@@ -74,7 +74,6 @@
     <string name="settings_section_debug">DEBUG</string>
     <string name="obd_no_paired_devices">No paired Bluetooth devices. Pair your OBD adapter in Bluetooth settings first.</string>
     <string name="obd_connect_failed">Couldn\'t connect to the OBD device. Try again.</string>
-    <string name="obd_run_sweep">Run diagnostic sweep</string>
     <string name="obd_disconnect">Disconnect</string>
     <string name="obd_sweep_running">Sweeping headers/DIDs…</string>
     <string name="obd_sweep_done">Sweep complete</string>

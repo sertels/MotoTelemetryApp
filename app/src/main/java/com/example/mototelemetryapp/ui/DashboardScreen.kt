@@ -215,17 +215,11 @@ fun ObdStatusBadge(
     onFetchDevices: () -> List<Pair<String, String>>,
     onConnect: (String) -> Unit,
     simulated: Boolean = false,
-    sweepRunning: Boolean = false,
-    sweepResults: List<ObdSweepEntry> = emptyList(),
-    sweepProgress: Pair<Int, Int> = 0 to 0,
-    onRunSweep: () -> Unit = {},
-    onCancelSweep: () -> Unit = {},
     onDisconnect: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var devices by remember { mutableStateOf(emptyList<Pair<String, String>>()) }
-    var showSweepDialog by remember { mutableStateOf(false) }
 
     Box(modifier = modifier) {
         Row(
@@ -290,14 +284,8 @@ fun ObdStatusBadge(
                 }
             }
             if (connected) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.obd_run_sweep)) },
-                    onClick = {
-                        menuExpanded = false
-                        showSweepDialog = true
-                        onRunSweep()
-                    }
-                )
+                // Diagnostic sweep lives only on the Bike Info screen now - having it here too
+                // was a duplicate entry point for the same action (2026-08-01).
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.obd_disconnect)) },
                     onClick = {
@@ -307,16 +295,6 @@ fun ObdStatusBadge(
                 )
             }
         }
-    }
-
-    if (showSweepDialog) {
-        ObdSweepDialog(
-            running = sweepRunning,
-            results = sweepResults,
-            progress = sweepProgress,
-            onCancel = onCancelSweep,
-            onDismiss = { showSweepDialog = false }
-        )
     }
 }
 
