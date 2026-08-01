@@ -510,6 +510,20 @@ class MainActivity : AppCompatActivity() {
                                         maxGForceLon = maxGForceLon
                                     )
                                 } else {
+                                    // The OBD badge lives in the shared top bar and is reachable
+                                    // from Home too, but until the service is bound
+                                    // dashboardViewModel.telemetryService is null, so tapping it
+                                    // silently no-ops (empty device list, connect() does nothing) -
+                                    // reported as "the OBD button looks broken" on a real ride,
+                                    // 2026-08-01, where tracking was already active in the
+                                    // background but the UI hadn't bound yet. autoCreate=false so
+                                    // this only attaches to an already-running service instead of
+                                    // spinning one up just because the user opened Home.
+                                    LaunchedEffect(Unit) {
+                                        if (!isBound && isTrackingActive) {
+                                            dashboardViewModel.bindService(context, autoCreate = false)
+                                        }
+                                    }
                                     val sessions by dashboardViewModel.sessions.collectAsState()
                                     val fuelLevelPct by dashboardViewModel.fuelLevelPct.collectAsState()
                                     val serviceRemainingKm by dashboardViewModel.serviceRemainingKm.collectAsState()
