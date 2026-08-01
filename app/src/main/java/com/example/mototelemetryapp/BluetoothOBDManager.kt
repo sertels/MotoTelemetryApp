@@ -18,6 +18,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 import java.io.IOException
 import java.io.InputStream
@@ -391,6 +392,16 @@ class BluetoothOBDManager(
         sendCommand("012F")
         val fuelLevel = parseFuelLevel(readResponse())
 
+        // Standard mode 01 PIDs the Bike Info screen already had UI slots for but no real data
+        // ("Battery voltage, intake temp ... not mapped yet") - found working on this exact ECU
+        // via the user's other OBD app's sensor dump (extra_info/car_all_sensors_*.csv, PID 66
+        // "ECU voltage" 13.853V and PID 15 "Intake Air Temperature" 71°C), 2026-08-01.
+        sendCommand("0142")
+        val batteryVolts = parseBatteryVoltage(readResponse())
+
+        sendCommand("010F")
+        val intakeTemp = parseIntakeTemp(readResponse())
+
         // --- ABS/IMU Data (Header 7E1) ---
         setHeader("7E1")
 
@@ -415,7 +426,9 @@ class BluetoothOBDManager(
             "ODOMETER" to odometer.toInt(), // Lossy for Map, but we'll use a better way later
             "DIST_SINCE_CLEAR" to distanceSinceClear,
             "FUEL_RATE" to (fuelRate * 100).toInt(), // Scale for Map
-            "FUEL_LEVEL" to fuelLevel
+            "FUEL_LEVEL" to fuelLevel,
+            "BATTERY" to batteryVolts, // Tenths of a volt (138 = 13.8V) - matches the existing /10f in MainActivity
+            "INTAKE_TEMP" to intakeTemp
         )
     }
 
@@ -468,6 +481,37 @@ class BluetoothOBDManager(
                 Integer.parseInt(hex, 16) - 40
             } else {
                 markPidStatus("0105", false)
+                0
+            }
+        } catch (_: Exception) { 0 }
+    }
+
+    private fun parseBatteryVoltage(response: String): Int {
+        // 41 42 AA BB -> (AA*256+BB)/1000 volts. Returned as tenths of a volt (138 = 13.8V) to
+        // match the /10f already applied where this is consumed (MainActivity.kt).
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains("4142")) {
+                val hex = clean.substringAfter("4142").take(4)
+                markPidStatus("0142", true)
+                (Integer.parseInt(hex, 16) / 100.0).roundToInt()
+            } else {
+                markPidStatus("0142", false)
+                0
+            }
+        } catch (_: Exception) { 0 }
+    }
+
+    private fun parseIntakeTemp(response: String): Int {
+        // 41 0F XX -> XX - 40
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains("410F")) {
+                val hex = clean.substringAfter("410F").take(2)
+                markPidStatus("010F", true)
+                Integer.parseInt(hex, 16) - 40
+            } else {
+                markPidStatus("010F", false)
                 0
             }
         } catch (_: Exception) { 0 }
@@ -747,8 +791,11 @@ class BluetoothOBDManager(
             PidMapping("7E1", "22D10D", "Lean angle (bike)"),
             PidMapping("7E0", "0105", "Coolant temp"),
             PidMapping("7E0", "222503", "Odometer"),
+            PidMapping("7E0", "0131", "Distance since DTC clear"),
             PidMapping("7E0", "015E", "Fuel rate"),
             PidMapping("7E0", "012F", "Fuel level"),
+            PidMapping("7E0", "0142", "Battery voltage"),
+            PidMapping("7E0", "010F", "Intake air temp"),
             PidMapping("7E0", "0101", "MIL status / DTC count"),
             PidMapping("7E0", "03", "Stored DTCs")
         )

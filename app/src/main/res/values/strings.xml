@@ -130,12 +130,13 @@
     <string name="bike_info_fuel_level">FUEL LEVEL</string>
     <string name="bike_info_fuel_rate">FUEL RATE</string>
     <string name="bike_info_battery">BATTERY</string>
+    <string name="bike_info_intake_temp">INTAKE TEMP</string>
     <string name="bike_info_high_tag">HIGH</string>
     <string name="bike_info_no_dtc">No stored trouble codes.</string>
     <string name="bike_info_dtc_unknown">Connect OBD to check for trouble codes.</string>
     <string name="bike_info_check_engine_count">CHECK ENGINE · %1$d code(s)</string>
     <string name="bike_info_sweep_title">Look for more signals</string>
-    <string name="bike_info_sweep_hint">Battery voltage, intake temp, ABS faults — not mapped yet</string>
+    <string name="bike_info_sweep_hint">ABS faults, EGT — not mapped yet</string>
     <string name="g_force_lat">LATERAL G</string>
     <string name="g_force_lon">LONG. G</string>
 </resources>

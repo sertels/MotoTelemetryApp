@@ -130,12 +130,13 @@
     <string name="bike_info_fuel_level">YAKIT SEVİYESİ</string>
     <string name="bike_info_fuel_rate">YAKIT TÜKETİMİ</string>
     <string name="bike_info_battery">AKÜ</string>
+    <string name="bike_info_intake_temp">EMME SICAKLIĞI</string>
     <string name="bike_info_high_tag">YÜKSEK</string>
     <string name="bike_info_no_dtc">Kayıtlı arıza kodu yok.</string>
     <string name="bike_info_dtc_unknown">Arıza kodlarını görmek için OBD\'ye bağlanın.</string>
     <string name="bike_info_check_engine_count">MOTOR ARIZASI · %1$d kod</string>
     <string name="bike_info_sweep_title">Daha fazla sinyal ara</string>
-    <string name="bike_info_sweep_hint">Akü voltajı, emme sıcaklığı, ABS arızaları — henüz eşlenmedi</string>
+    <string name="bike_info_sweep_hint">ABS arızaları, egzoz sıcaklığı — henüz eşlenmedi</string>
     <string name="g_force_lat">YANAL G</string>
     <string name="g_force_lon">BOYUNA G</string>
 </resources>

@@ -62,6 +62,7 @@ fun BikeInfoScreen(
     fuelRateLph: Float?,
     speedKmh: Int?,
     batteryVolts: Float?,
+    intakeTempC: Int?,
     obdMilOn: Boolean,
     obdDtcCodes: List<String>,
     onClearObdDtcs: () -> Unit,
@@ -169,10 +170,16 @@ fun BikeInfoScreen(
                 )
                 StatCard(
                     label = stringResource(R.string.bike_info_battery),
-                    // Still "--" on a real bike: no battery-voltage PID has been confirmed on this
-                    // ECU yet (that's what the sweep below is for). Only the simulator fills it.
+                    // Standard mode 01 PID 0142 ("control module voltage") - found working on
+                    // this ECU via the user's other OBD app's sensor dump, 2026-08-01.
                     value = batteryVolts?.let { "%.1f".format(it) } ?: "--",
                     unit = "V",
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
+                    label = stringResource(R.string.bike_info_intake_temp),
+                    value = "${intakeTempC ?: 0}",
+                    unit = "°C",
                     modifier = Modifier.weight(1f)
                 )
             }
