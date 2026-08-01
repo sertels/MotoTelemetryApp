@@ -81,6 +81,15 @@ class BluetoothOBDManager(
     private var dataLoopTick = 0
     private var dataLoopJob: Job? = null
 
+    // sendCommand()/readResponse() both swallow IOException internally (a single unsupported
+    // PID shouldn't kill the whole loop), so a dead socket - e.g. the ELM327 losing power when
+    // the rider kills the ignition - never threw where startDataLoop()'s catch could see it and
+    // flip _isConnected. The badge stayed "Connected" indefinitely after the bike was switched
+    // off (reported on a real ride, 2026-08-01). A write failure only happens when the RFCOMM
+    // link itself is actually broken (unlike a read timeout, which legitimately happens for an
+    // unconfirmed PID), so counting consecutive write failures is an unambiguous dead-link signal.
+    private var consecutiveWriteFailures = 0
+
     // Tracks the ELM327's currently active diagnostic header so redundant ATSH commands can
     // be skipped - each one costs a settle delay plus a round trip, and pollOnce() was
     // resending the same header it was already on every single cycle.
@@ -183,6 +192,7 @@ class BluetoothOBDManager(
                 if (initELM327()) {
                     _isConnected.value = true
                     loggedUnexpectedResponses.clear()
+                    consecutiveWriteFailures = 0
                     if (preferredAddress == null) {
                         // First-time connect via the name-hint heuristic - remember it too,
                         // not just explicit picks from connectToDevice().
@@ -234,7 +244,9 @@ class BluetoothOBDManager(
         try {
             outputStream?.write((cmd + "\r").toByteArray())
             outputStream?.flush()
+            consecutiveWriteFailures = 0
         } catch (e: IOException) {
+            consecutiveWriteFailures++
             DiagnosticLog.e(tag, "Komut gönderme hatası: ${e.message}")
         }
     }
@@ -266,6 +278,12 @@ class BluetoothOBDManager(
             while (_isConnected.value) {
                 try {
                     _obdData.value = ioMutex.withLock { pollOnce() }
+
+                    if (consecutiveWriteFailures >= MAX_CONSECUTIVE_WRITE_FAILURES) {
+                        DiagnosticLog.e(tag, "Bağlantı koptu (art arda $consecutiveWriteFailures yazma hatası) - bağlantı kesiliyor.")
+                        disconnect()
+                        break
+                    }
 
                     // DTCs don't change fast enough to justify checking every 100ms cycle
                     // alongside the live gauges, so this only runs every DTC_POLL_INTERVAL_TICKS.
@@ -620,6 +638,9 @@ class BluetoothOBDManager(
         private const val DTC_POLL_INTERVAL_TICKS = 50 // ~5s at the 100ms data-loop cadence
         private const val CONNECT_MAX_ATTEMPTS = 4
         private const val CONNECT_RETRY_DELAY_MS = 1200L
+        // Each pollOnce() cycle makes 11 sendCommand() calls, so this trips within roughly one
+        // cycle of the link actually dying rather than needing many seconds of stale "Connected".
+        private const val MAX_CONSECUTIVE_WRITE_FAILURES = 8
 
         // For callers (e.g. ObdAutoStartReceiver) that just need to peek at the stored device
         // address without constructing a full manager instance (sockets, mutexes, a data-loop
