@@ -150,6 +150,11 @@ class TelemetryService : Service() {
         bluetoothOBDManager?.sweepStandardPidSupport()
     }
 
+    // EXPLICITLY RISKY - see BluetoothOBDManager.trySecuritySessionProbe.
+    suspend fun runSecuritySessionProbe() {
+        bluetoothOBDManager?.trySecuritySessionProbe()
+    }
+
     override fun onCreate() {
         super.onCreate()
         DiagnosticLog.init(this)

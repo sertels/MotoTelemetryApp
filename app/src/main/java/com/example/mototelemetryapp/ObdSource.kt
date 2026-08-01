@@ -55,6 +55,10 @@ interface ObdSource {
     // Official OBD-II standard-PID-support discovery (mode 01 PID 00/20/40...) - safe on any
     // compliant ECU, unlike sweepHeadersAndDids()'s manufacturer-DID guessing.
     suspend fun sweepStandardPidSupport()
+
+    // EXPLICITLY RISKY - changes ECU diagnostic session state (10 03), not just a read. Manual,
+    // one-off use only, engine off - see BluetoothOBDManager.trySecuritySessionProbe for why.
+    suspend fun trySecuritySessionProbe()
 }
 
 // Whether the simulated sources should be used instead of the real Bluetooth adapter and

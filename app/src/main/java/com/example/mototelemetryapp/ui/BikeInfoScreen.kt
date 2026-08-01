@@ -73,6 +73,7 @@ fun BikeInfoScreen(
     obdSweepProgress: Pair<Int, Int> = 0 to 0,
     onRunObdSweep: () -> Unit,
     onRunStandardPidSweep: () -> Unit,
+    onRunSecuritySessionProbe: () -> Unit,
     onCancelObdSweep: () -> Unit = {}
 ) {
     Column(
@@ -226,6 +227,14 @@ fun BikeInfoScreen(
             progress = obdSweepProgress,
             onRunSweep = onRunObdSweep,
             onCancelSweep = onCancelObdSweep
+        )
+
+        RiskySessionCta(
+            running = obdSweepRunning,
+            results = obdSweepResults,
+            progress = obdSweepProgress,
+            onRun = onRunSecuritySessionProbe,
+            onCancel = onCancelObdSweep
         )
     }
 }
@@ -521,6 +530,92 @@ private fun SweepCta(
             progress = progress,
             onCancel = onCancelSweep,
             onDismiss = { showSweepDialog = false }
+        )
+    }
+}
+
+// EXPLICITLY RISKY - see BluetoothOBDManager.trySecuritySessionProbe for why this is kept apart
+// from the two SweepCta rows above (own warm colors, own confirmation gate) instead of just
+// being a third entry in the same list.
+@Composable
+private fun RiskySessionCta(
+    running: Boolean,
+    results: List<ObdSweepEntry>,
+    progress: Pair<Int, Int> = 0 to 0,
+    onRun: () -> Unit,
+    onCancel: () -> Unit = {}
+) {
+    var showConfirm by remember { mutableStateOf(false) }
+    var showResultDialog by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF241414), RoundedCornerShape(14.dp))
+            .border(1.dp, Color(0xFF5A2A2A), RoundedCornerShape(14.dp))
+            .clickable { showConfirm = true }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                stringResource(R.string.bike_info_risky_session_title),
+                color = Color(0xFFE0A0A0),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                stringResource(R.string.bike_info_risky_session_hint),
+                color = TelemetryOnSurfaceMuted,
+                fontSize = 10.5.sp,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+            contentDescription = null,
+            tint = Color(0xFFE0A0A0),
+            modifier = Modifier.size(16.dp)
+        )
+    }
+
+    if (showConfirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showConfirm = false },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    showConfirm = false
+                    showResultDialog = true
+                    onRun()
+                }) {
+                    Text(stringResource(R.string.bike_info_risky_session_confirm_button), color = Color(0xFFE0A0A0))
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+            title = { Text(stringResource(R.string.bike_info_risky_session_confirm_title), color = Color.White) },
+            text = {
+                Text(
+                    stringResource(R.string.bike_info_risky_session_confirm_message),
+                    color = TelemetryOnSurfaceMuted,
+                    fontSize = 12.sp
+                )
+            },
+            containerColor = Color(0xFF1C1C1C)
+        )
+    }
+
+    if (showResultDialog) {
+        ObdSweepDialog(
+            running = running,
+            results = results,
+            progress = progress,
+            onCancel = onCancel,
+            onDismiss = { showResultDialog = false }
         )
     }
 }

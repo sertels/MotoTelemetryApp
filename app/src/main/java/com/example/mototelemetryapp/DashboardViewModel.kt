@@ -426,6 +426,13 @@ class DashboardViewModel : ViewModel() {
         }
     }
 
+    // EXPLICITLY RISKY - see BluetoothOBDManager.trySecuritySessionProbe. Manual, one-off only.
+    fun runSecuritySessionProbe() {
+        obdSweepJob = viewModelScope.launch {
+            telemetryService?.runSecuritySessionProbe()
+        }
+    }
+
     fun cancelObdSweep() {
         obdSweepJob?.cancel()
         obdSweepJob = null

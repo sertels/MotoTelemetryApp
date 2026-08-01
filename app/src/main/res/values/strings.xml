@@ -141,6 +141,11 @@
     <string name="bike_info_sweep_hint">ABS faults, EGT — not mapped yet</string>
     <string name="bike_info_standard_sweep_title">Scan standard PID support</string>
     <string name="bike_info_standard_sweep_hint">Asks the ECU directly which standard sensors it supports - safe, official OBD-II query</string>
+    <string name="bike_info_risky_session_title">⚠ Extended session (risky, engine OFF only)</string>
+    <string name="bike_info_risky_session_hint">Sends 10 03 then re-probes 43FE/43FF - changes ECU session state, not just a read</string>
+    <string name="bike_info_risky_session_confirm_title">Engine must be off</string>
+    <string name="bike_info_risky_session_confirm_message">This puts the ECU into an extended diagnostic session before probing two addresses - unlike every other query in this app, it changes ECU state rather than just reading it. Only run this with the engine off. Continue?</string>
+    <string name="bike_info_risky_session_confirm_button">Continue</string>
     <string name="g_force_lat">LATERAL G</string>
     <string name="g_force_lon">LONG. G</string>
 </resources>

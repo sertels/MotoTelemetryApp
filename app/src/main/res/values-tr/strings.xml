@@ -141,6 +141,11 @@
     <string name="bike_info_sweep_hint">ABS arızaları, egzoz sıcaklığı — henüz eşlenmedi</string>
     <string name="bike_info_standard_sweep_title">Standart PID desteğini tara</string>
     <string name="bike_info_standard_sweep_hint">ECU\'ya hangi standart sensörleri desteklediğini doğrudan sorar - güvenli, resmi OBD-II sorgusu</string>
+    <string name="bike_info_risky_session_title">⚠ Genişletilmiş oturum (riskli, sadece motor KAPALI)</string>
+    <string name="bike_info_risky_session_hint">10 03 gönderip 43FE/43FF\'i tekrar dener - salt okuma değil, ECU\'nun oturum durumunu değiştirir</string>
+    <string name="bike_info_risky_session_confirm_title">Motor kapalı mı?</string>
+    <string name="bike_info_risky_session_confirm_message">Bu, iki adresi denemeden önce ECU\'yu genişletilmiş bir tanı oturumuna alır - bu uygulamadaki diğer her sorgudan farklı olarak, sadece okumaz, ECU durumunu değiştirir. Sadece motor çalışmıyorken dene. Devam edilsin mi?</string>
+    <string name="bike_info_risky_session_confirm_button">Devam et</string>
     <string name="g_force_lat">YANAL G</string>
     <string name="g_force_lon">BOYUNA G</string>
 </resources>

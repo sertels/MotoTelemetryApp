@@ -145,6 +145,20 @@ class SimulatedObdSource(private val dataLoopScope: CoroutineScope) : ObdSource 
         }
     }
 
+    // Simulator has no real ECU session to escalate - just reports a plausible negative so the
+    // confirmation/result dialog flow can be exercised without a bike attached.
+    override suspend fun trySecuritySessionProbe() {
+        if (!_isConnected.value) return
+        _sweepRunning.value = true
+        _sweepResults.value = emptyList()
+        _sweepProgress.value = 0 to 1
+        delay(SWEEP_STEP_MS.milliseconds)
+        _sweepResults.value = listOf(ObdSweepEntry("7E0", "1003", "7F 10 11"))
+        _sweepProgress.value = 1 to 1
+        _sweepRunning.value = false
+        _sweepProgress.value = 0 to 0
+    }
+
     private fun sweepResponseFor(header: String, did: String): String {
         val known = BluetoothOBDManager.CONFIRMED_PID_MAP.any {
             it.header == header && it.command.equals("22$did", ignoreCase = true)

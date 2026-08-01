@@ -533,6 +533,57 @@ class BluetoothOBDManager(
         }
     }
 
+    // EXPLICITLY RISKY - unlike every other command in this file, this changes the ECU's
+    // diagnostic session state rather than just reading data. UDS DiagnosticSessionControl
+    // (10 03, Extended Diagnostic Session) can change how an ECU behaves (e.g. suspend normal
+    // broadcasts) and this app already has one real incident of a blind UDS probe causing an
+    // actual engine stall/dash blackout mid-ride (2026-07-26, see sweepHeadersAndDids's header
+    // restriction). User-requested after external advice about getting past "7F 22 31"
+    // (requestOutOfRange) on 43FE/43FF, 2026-08-01 - deliberately NOT part of the regular sweep
+    // and never auto-invoked; the UI only offers it behind an explicit "engine must be off"
+    // confirmation, for a single manual test. Always sends 10 01 (back to Default Session)
+    // before finishing, whatever the outcome, so the ECU is never left in an unusual mode.
+    override suspend fun trySecuritySessionProbe() {
+        if (!_isConnected.value) return
+        _sweepRunning.value = true
+        _sweepResults.value = emptyList()
+        _sweepProgress.value = 0 to 2
+        try {
+            withContext(Dispatchers.IO) {
+                ioMutex.withLock {
+                    setHeader("7E0")
+
+                    sendCommand("1003")
+                    delay(80.milliseconds)
+                    val sessionResponse = readResponse()
+                    _sweepResults.value = _sweepResults.value + ObdSweepEntry("7E0", "1003", sessionResponse)
+                    _sweepProgress.value = 1 to 2
+
+                    // Only bother re-probing if the ECU actually granted the extended session
+                    // (50 03) - a negative response (e.g. 7F 10 33, security access needed) means
+                    // there's nothing more to try here without a seed/key exchange this app does
+                    // not implement.
+                    if (sessionResponse.replace(" ", "").contains("5003")) {
+                        for (did in listOf("43FE", "43FF")) {
+                            sendCommand("22$did")
+                            delay(80.milliseconds)
+                            _sweepResults.value = _sweepResults.value + ObdSweepEntry("7E0", did, readResponse())
+                        }
+                    }
+                    _sweepProgress.value = 2 to 2
+
+                    sendCommand("1001")
+                    delay(80.milliseconds)
+                    readResponse()
+                    setHeader("7E0")
+                }
+            }
+        } finally {
+            _sweepRunning.value = false
+            _sweepProgress.value = 0 to 0
+        }
+    }
+
     private fun parseCoolant(response: String): Int {
         // 41 05 XX -> XX - 40
         return try {
