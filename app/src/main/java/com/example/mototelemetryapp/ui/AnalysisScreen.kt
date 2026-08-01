@@ -31,13 +31,16 @@ import kotlinx.coroutines.flow.Flow
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottomAxis
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStartAxis
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
+import com.patrykandpatrick.vico.compose.common.fill
 import com.patrykandpatrick.vico.core.cartesian.Zoom
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.core.cartesian.data.lineSeries
+import com.patrykandpatrick.vico.core.cartesian.layer.LineCartesianLayer
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.roundToInt
@@ -292,7 +295,8 @@ fun SessionDetailView(records: List<TelemetryRecord>) {
         TelemetryLineChart(
             records = records,
             legend = stringResource(R.string.chart_legend),
-            seriesSelectors = listOf({ it.speed.toFloat() }, { it.rpm.toFloat() / 100f })
+            seriesSelectors = listOf({ it.speed.toFloat() }, { it.rpm.toFloat() / 100f }),
+            seriesColors = listOf(Color.White, TelemetryAccent)
         )
         // Phone-sourced (leanAnglePhone/gForceLat/gForceLon), not OBD-sourced - these got a real
         // noise-smoothing fix (EMA + rate-of-change gating in OrientationManager) on 2026-08-01
@@ -301,12 +305,14 @@ fun SessionDetailView(records: List<TelemetryRecord>) {
         TelemetryLineChart(
             records = records,
             legend = stringResource(R.string.chart_legend_lean),
-            seriesSelectors = listOf({ it.leanAnglePhone })
+            seriesSelectors = listOf({ it.leanAnglePhone }),
+            seriesColors = listOf(Color.White)
         )
         TelemetryLineChart(
             records = records,
             legend = stringResource(R.string.chart_legend_gforce),
-            seriesSelectors = listOf({ it.gForceLat }, { it.gForceLon })
+            seriesSelectors = listOf({ it.gForceLat }, { it.gForceLon }),
+            seriesColors = listOf(Color.White, TelemetryAccent)
         )
     }
 }
@@ -319,7 +325,8 @@ fun SessionDetailView(records: List<TelemetryRecord>) {
 private fun TelemetryLineChart(
     records: List<TelemetryRecord>,
     legend: String,
-    seriesSelectors: List<(TelemetryRecord) -> Float>
+    seriesSelectors: List<(TelemetryRecord) -> Float>,
+    seriesColors: List<Color>
 ) {
     val modelProducer = remember { CartesianChartModelProducer() }
     var showError by remember { mutableStateOf(false) }
@@ -371,7 +378,16 @@ private fun TelemetryLineChart(
             }
             CartesianChartHost(
                 chart = rememberCartesianChart(
-                    rememberLineCartesianLayer(),
+                    rememberLineCartesianLayer(
+                        // Vico's own default palette is three shades of gray in dark theme -
+                        // it never actually matched the "White/Blue" legend text, which is why
+                        // both lines looked identically gray on a real device (2026-08-01).
+                        lineProvider = LineCartesianLayer.LineProvider.series(
+                            seriesColors.map { color ->
+                                rememberLine(LineCartesianLayer.LineFill.single(fill(color)))
+                            }
+                        )
+                    ),
                     startAxis = rememberStartAxis(),
                     bottomAxis = rememberBottomAxis(valueFormatter = elapsedTimeFormatter),
                 ),
