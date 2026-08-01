@@ -314,8 +314,17 @@ class BluetoothOBDManager(
                     val buffer = ByteArray(1024)
                     val lineBuilder = StringBuilder()
                     while (System.currentTimeMillis() < deadline) {
+                        // read() blocks with no built-in timeout (same caveat as readResponse()),
+                        // and on a quiet bus (e.g. ignition on/engine off, few modules broadcasting)
+                        // ATMA can go tens of seconds without producing a single byte - without this
+                        // timeout the loop never gets to re-check the deadline, so an 8s capture
+                        // silently ran 90+ seconds and killed the Bluetooth socket on a real test,
+                        // 2026-08-01. withTimeoutOrNull can't actually interrupt the blocked read
+                        // call underneath, but it does let this loop stop waiting on it and finish
+                        // on time; the abandoned read is harmless since the socket gets closed by
+                        // the stop-monitor sequence right after anyway.
                         val bytes = try {
-                            inputStream?.read(buffer) ?: break
+                            withTimeoutOrNull(500.milliseconds) { inputStream?.read(buffer) } ?: continue
                         } catch (_: IOException) {
                             break
                         }
