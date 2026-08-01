@@ -285,6 +285,26 @@ class BluetoothOBDManager(
         try {
             withContext(Dispatchers.IO) {
                 ioMutex.withLock {
+                    // ATH1 (headers on) so each captured line is prefixed with its CAN ID - without
+                    // it the adapter streams bare data bytes with no way to tell which ID any of
+                    // them came from, making the whole point of this capture (find the one ID that
+                    // changes with lean) impossible. Confirmed missing on a real capture, 2026-08-01
+                    // (frames with no leading ID at all). Existing parse functions all match via
+                    // .contains() on the expected substring, so leaving headers on afterward would
+                    // be harmless too, but restoring ATH0 keeps the normal poll loop's behavior
+                    // exactly as it was before this ran.
+                    try {
+                        outputStream?.write("ATH1\r".toByteArray())
+                        outputStream?.flush()
+                    } catch (_: IOException) {
+                    }
+                    delay(100.milliseconds)
+                    try {
+                        val drain = ByteArray(256)
+                        inputStream?.read(drain)
+                    } catch (_: IOException) {
+                    }
+
                     try {
                         outputStream?.write("ATMA\r".toByteArray())
                         outputStream?.flush()
@@ -331,6 +351,19 @@ class BluetoothOBDManager(
                                 if (n <= 0) break
                             }
                         }
+                    } catch (_: IOException) {
+                    }
+
+                    // Restore ATH0 so the normal poll loop resumes exactly as before this ran.
+                    try {
+                        outputStream?.write("ATH0\r".toByteArray())
+                        outputStream?.flush()
+                    } catch (_: IOException) {
+                    }
+                    delay(100.milliseconds)
+                    try {
+                        val drain2 = ByteArray(256)
+                        inputStream?.read(drain2)
                     } catch (_: IOException) {
                     }
                 }
