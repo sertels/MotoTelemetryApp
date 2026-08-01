@@ -40,6 +40,8 @@
     <string name="avg_kmh">AVG KM/H</string>
     <string name="km_short">KM</string>
     <string name="chart_legend">Speed (White) &amp; RPM/100 (Blue)</string>
+    <string name="chart_legend_lean">Lean Angle ° (Left −/Right +)</string>
+    <string name="chart_legend_gforce">Lateral G (White) &amp; Longitudinal G (Blue)</string>
     <string name="stat_bike">BIKE</string>
     <string name="stat_gps">GPS</string>
     <string name="stat_max_speed">MAX SPEED</string>

@@ -6,7 +6,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -85,6 +87,7 @@ fun AnalysisScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFF121212))
+                .verticalScroll(rememberScrollState())
         ) {
             TextButton(onClick = { selectedSession = null }) {
                 Text(stringResource(R.string.back_to_sessions), color = TelemetryAccent)
@@ -282,32 +285,62 @@ private const val TARGET_CHART_POINTS = 400
 fun SessionDetailView(records: List<TelemetryRecord>) {
     if (records.isEmpty()) return
 
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp)
+    ) {
+        TelemetryLineChart(
+            records = records,
+            legend = stringResource(R.string.chart_legend),
+            seriesSelectors = listOf({ it.speed.toFloat() }, { it.rpm.toFloat() / 100f })
+        )
+        // Phone-sourced (leanAnglePhone/gForceLat/gForceLon), not OBD-sourced - these got a real
+        // noise-smoothing fix (EMA + rate-of-change gating in OrientationManager) on 2026-08-01
+        // and are trustworthy for a timeline. Bike-sourced fields (gear, lean-bike, odometer) were
+        // still failing to read on a real ride as of that date, so they aren't charted yet.
+        TelemetryLineChart(
+            records = records,
+            legend = stringResource(R.string.chart_legend_lean),
+            seriesSelectors = listOf({ it.leanAnglePhone })
+        )
+        TelemetryLineChart(
+            records = records,
+            legend = stringResource(R.string.chart_legend_gforce),
+            seriesSelectors = listOf({ it.gForceLat }, { it.gForceLon })
+        )
+    }
+}
+
+// Shared by every chart in SessionDetailView - downsample-by-stride, real-elapsed-minutes-as-x
+// (rounded to avoid Vico's x-precision crash), and Zoom.Content are all load-bearing fixes from
+// getting the original Speed/RPM chart working on a real ~1hr ride, see the TARGET_CHART_POINTS
+// comment above.
+@Composable
+private fun TelemetryLineChart(
+    records: List<TelemetryRecord>,
+    legend: String,
+    seriesSelectors: List<(TelemetryRecord) -> Float>
+) {
     val modelProducer = remember { CartesianChartModelProducer() }
     var showError by remember { mutableStateOf(false) }
 
-    // Downsampled by stride (not just capped) so the whole ride is represented, not just its
-    // first TARGET_CHART_POINTS records - and real elapsed minutes (not raw record index) is
-    // used for x, so the axis actually means something the rider can read at a glance. Rounded
-    // to 2 decimal places (~0.6s resolution, plenty for this) - Vico's GCD-based point spacing
-    // rejects x values with more than 4 decimal places, which raw millisecond-derived minutes
-    // almost always have (crashed on a real ride's data, 2026-08-01).
-    val chartPoints = remember(records) {
+    val chartData = remember(records) {
         val stride = (records.size / TARGET_CHART_POINTS).coerceAtLeast(1)
         val startTimestamp = records.first().timestamp
-        records.filterIndexed { index, _ -> index % stride == 0 }
-            .map { record ->
-                val elapsedMinutes = ((record.timestamp - startTimestamp) / 60_000.0 * 100).roundToInt() / 100.0
-                Triple(elapsedMinutes, record.speed.toFloat(), record.rpm.toFloat() / 100f)
-            }
+        val sampled = records.filterIndexed { index, _ -> index % stride == 0 }
+        val xValues = sampled.map { record ->
+            ((record.timestamp - startTimestamp) / 60_000.0 * 100).roundToInt() / 100.0
+        }
+        val seriesValues = seriesSelectors.map { selector -> sampled.map(selector) }
+        xValues to seriesValues
     }
 
-    LaunchedEffect(chartPoints) {
+    LaunchedEffect(chartData) {
         try {
             modelProducer.runTransaction {
                 lineSeries {
-                    val elapsedMinutes = chartPoints.map { it.first }
-                    series(elapsedMinutes, chartPoints.map { it.second })
-                    series(elapsedMinutes, chartPoints.map { it.third })
+                    val (xValues, seriesValues) = chartData
+                    seriesValues.forEach { values -> series(xValues, values) }
                 }
             }
             showError = false
@@ -317,7 +350,7 @@ fun SessionDetailView(records: List<TelemetryRecord>) {
         }
     }
 
-    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         if (showError) {
             Text(
                 text = stringResource(R.string.chart_error),
@@ -325,7 +358,7 @@ fun SessionDetailView(records: List<TelemetryRecord>) {
                 fontSize = 14.sp
             )
         } else {
-            Text(text = stringResource(R.string.chart_legend), color = Color.White, fontSize = 14.sp)
+            Text(text = legend, color = Color.White, fontSize = 14.sp)
         }
         Spacer(modifier = Modifier.height(8.dp))
 
