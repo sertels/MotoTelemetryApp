@@ -43,6 +43,12 @@ private val CardBorderSoft = Color(0xFF202020)
 private const val COOLANT_HOT_THRESHOLD_C = 100
 private const val MIN_SPEED_FOR_ECONOMY_KMH = 5
 
+private fun formatRunTime(totalSeconds: Int): String {
+    val h = totalSeconds / 3600
+    val m = (totalSeconds % 3600) / 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, totalSeconds % 60) else "%d:%02d".format(m, totalSeconds % 60)
+}
+
 @Composable
 fun BikeInfoScreen(
     obdConnected: Boolean,
@@ -66,6 +72,10 @@ fun BikeInfoScreen(
     intakeTempC: Int?,
     engineLoadPct: Int?,
     ambientTempC: Int?,
+    mapKpa: Int?,
+    catalystTempB1: Int?,
+    engineRunTimeSec: Int?,
+    distanceMilOnKm: Int?,
     obdMilOn: Boolean,
     obdDtcCodes: List<String>,
     onClearObdDtcs: () -> Unit,
@@ -202,6 +212,34 @@ fun BikeInfoScreen(
                     label = stringResource(R.string.bike_info_ambient_temp),
                     value = "${ambientTempC ?: 0}",
                     unit = "°C",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatCard(
+                    label = stringResource(R.string.bike_info_map_pressure),
+                    value = "${mapKpa ?: 0}",
+                    unit = "kPa",
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
+                    label = stringResource(R.string.bike_info_catalyst_temp),
+                    value = "${catalystTempB1 ?: 0}",
+                    unit = "°C",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatCard(
+                    label = stringResource(R.string.bike_info_engine_runtime),
+                    value = formatRunTime(engineRunTimeSec ?: 0),
+                    unit = "",
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
+                    label = stringResource(R.string.bike_info_distance_mil_on),
+                    value = "${distanceMilOnKm ?: 0}",
+                    unit = "km",
                     modifier = Modifier.weight(1f)
                 )
             }

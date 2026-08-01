@@ -412,7 +412,10 @@ class BluetoothOBDManager(
         withContext(Dispatchers.IO) {
             while (_isConnected.value) {
                 try {
-                    _obdData.value = ioMutex.withLock { pollOnce() }
+                    // Merge, not replace: pollSlowPids() below only runs every
+                    // DTC_POLL_INTERVAL_TICKS, so overwriting the whole map every 100ms cycle
+                    // would make its keys flicker back to missing between slow-tier refreshes.
+                    _obdData.value = _obdData.value + ioMutex.withLock { pollOnce() }
 
                     if (consecutiveWriteFailures >= MAX_CONSECUTIVE_WRITE_FAILURES) {
                         DiagnosticLog.e(tag, "Bağlantı koptu (art arda $consecutiveWriteFailures yazma hatası) - bağlantı kesiliyor.")
@@ -420,11 +423,15 @@ class BluetoothOBDManager(
                         break
                     }
 
-                    // DTCs don't change fast enough to justify checking every 100ms cycle
-                    // alongside the live gauges, so this only runs every DTC_POLL_INTERVAL_TICKS.
+                    // DTCs, and everything pollSlowPids() covers, don't change fast enough to
+                    // justify the extra ~19 commands' round-trip time on every 100ms cycle
+                    // alongside the live gauges - that would noticeably slow down RPM/speed
+                    // responsiveness for values a rider never needs at 10Hz (fuel trims, O2
+                    // sensor readings, catalyst temp, etc.). Both run at this same slower cadence.
                     dataLoopTick++
                     if (dataLoopTick % DTC_POLL_INTERVAL_TICKS == 0) {
                         ioMutex.withLock { pollDtcStatus() }
+                        _obdData.value = _obdData.value + ioMutex.withLock { pollSlowPids() }
                     }
 
                     delay(100.milliseconds)
@@ -562,6 +569,99 @@ class BluetoothOBDManager(
             "INTAKE_TEMP" to intakeTemp,
             "ENGINE_LOAD" to engineLoad,
             "AMBIENT_TEMP" to ambientTemp
+        )
+    }
+
+    // Every remaining standard mode 01 PID the full support scan (sweepStandardPidSupport, PID
+    // 00/20/40...) found this ECU answers, that pollOnce() doesn't already cover - deliberately
+    // kept out of the hot 100ms loop (see startDataLoop) since none of these need live-gauge
+    // responsiveness. User asked to grab everything the scan found, 2026-08-01. Skips the PID
+    // support bitmasks themselves (0120/0140/0160/0180 - meta, not sensor data), a handful of
+    // enum/bitmask PIDs that would need bespoke decoding for little payoff on a bike (0103, 0112,
+    // 0113, 011C, 0130), 012E (EVAP purge - no such system on a motorcycle), and 0187 (outside
+    // the standard PID table, no documented meaning to decode against).
+    private suspend fun pollSlowPids(): Map<String, Int> {
+        setHeader("7E0")
+
+        sendCommand("010B")
+        val mapKpa = parseSimpleByte(readResponse(), "010B", "410B")
+
+        sendCommand("010E")
+        val timingAdvance = parseTimingAdvance(readResponse())
+
+        sendCommand("011F")
+        val runTimeSec = parseTwoByte(readResponse(), "011F", "411F")
+
+        sendCommand("0121")
+        val distanceMilOn = parseTwoByte(readResponse(), "0121", "4121")
+
+        sendCommand("013C")
+        val catalystTempB1 = parseCatalystTemp(readResponse(), "013C", "413C")
+
+        sendCommand("013D")
+        val catalystTempB2 = parseCatalystTemp(readResponse(), "013D", "413D")
+
+        sendCommand("0106")
+        val stFuelTrimB1 = parseFuelTrim(readResponse(), "0106", "4106")
+
+        sendCommand("0107")
+        val ltFuelTrimB1 = parseFuelTrim(readResponse(), "0107", "4107")
+
+        sendCommand("0108")
+        val stFuelTrimB2 = parseFuelTrim(readResponse(), "0108", "4108")
+
+        sendCommand("0109")
+        val ltFuelTrimB2 = parseFuelTrim(readResponse(), "0109", "4109")
+
+        sendCommand("0114")
+        val (o2B1S1Voltage, o2B1S1Trim) = parseO2Sensor(readResponse(), "0114", "4114")
+
+        sendCommand("0118")
+        val (o2B2S1Voltage, o2B2S1Trim) = parseO2Sensor(readResponse(), "0118", "4118")
+
+        sendCommand("0143")
+        val absoluteLoad = parseTwoByteScaled(readResponse(), "0143", "4143")
+
+        sendCommand("0144")
+        val equivalenceRatioPct = parseEquivalenceRatio(readResponse(), "0144", "4144")
+
+        sendCommand("0145")
+        val relativeThrottle = parseSimplePercent(readResponse(), "0145", "4145")
+
+        sendCommand("0147")
+        val throttlePosB = parseSimplePercent(readResponse(), "0147", "4147")
+
+        sendCommand("0149")
+        val pedalPosD = parseSimplePercent(readResponse(), "0149", "4149")
+
+        sendCommand("014A")
+        val pedalPosE = parseSimplePercent(readResponse(), "014A", "414A")
+
+        sendCommand("014C")
+        val commandedThrottleActuator = parseSimplePercent(readResponse(), "014C", "414C")
+
+        return mapOf(
+            "MAP_KPA" to mapKpa,
+            "TIMING_ADVANCE" to timingAdvance,
+            "ENGINE_RUNTIME_SEC" to runTimeSec,
+            "DIST_MIL_ON" to distanceMilOn,
+            "CATALYST_TEMP_B1" to catalystTempB1,
+            "CATALYST_TEMP_B2" to catalystTempB2,
+            "FUEL_TRIM_ST_B1" to stFuelTrimB1,
+            "FUEL_TRIM_LT_B1" to ltFuelTrimB1,
+            "FUEL_TRIM_ST_B2" to stFuelTrimB2,
+            "FUEL_TRIM_LT_B2" to ltFuelTrimB2,
+            "O2_B1S1_MV" to o2B1S1Voltage,
+            "O2_B1S1_TRIM" to o2B1S1Trim,
+            "O2_B2S1_MV" to o2B2S1Voltage,
+            "O2_B2S1_TRIM" to o2B2S1Trim,
+            "ABSOLUTE_LOAD" to absoluteLoad,
+            "EQUIVALENCE_RATIO_PCT" to equivalenceRatioPct,
+            "RELATIVE_THROTTLE" to relativeThrottle,
+            "THROTTLE_POS_B" to throttlePosB,
+            "PEDAL_POS_D" to pedalPosD,
+            "PEDAL_POS_E" to pedalPosE,
+            "COMMANDED_THROTTLE_ACTUATOR" to commandedThrottleActuator
         )
     }
 
@@ -778,6 +878,152 @@ class BluetoothOBDManager(
                 Integer.parseInt(hex, 16) - 40
             } else {
                 markPidStatus("0146", false)
+                0
+            }
+        } catch (_: Exception) { 0 }
+    }
+
+    // --- Generic mode 01 decoders shared by pollSlowPids()'s ~19 PIDs (010B/010E/011F/0121/
+    // 013C/013D/0106-0109/0114/0118/0143/0144/0145/0147/0149/014A/014C) - all standard SAE J1979
+    // formulas, none manufacturer-specific like the 22xx UDS DIDs elsewhere in this file. `prefix`
+    // is the request command (matches CONFIRMED_PID_MAP.command for markPidStatus/the sensor
+    // map), `match` is the expected positive-response prefix ("41" + PID hex).
+
+    // 1 byte, direct value 0-255 (e.g. 010B Intake Manifold Pressure, kPa).
+    private fun parseSimpleByte(response: String, prefix: String, match: String): Int {
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains(match)) {
+                val hex = clean.substringAfter(match).take(2)
+                markPidStatus(prefix, true)
+                Integer.parseInt(hex, 16)
+            } else {
+                markPidStatus(prefix, false)
+                0
+            }
+        } catch (_: Exception) { 0 }
+    }
+
+    // 1 byte, A*100/255 (e.g. 0145 relative throttle, 0149/014A pedal position).
+    private fun parseSimplePercent(response: String, prefix: String, match: String): Int {
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains(match)) {
+                val hex = clean.substringAfter(match).take(2)
+                markPidStatus(prefix, true)
+                (Integer.parseInt(hex, 16) * 100) / 255
+            } else {
+                markPidStatus(prefix, false)
+                0
+            }
+        } catch (_: Exception) { 0 }
+    }
+
+    // 2 bytes, direct value A*256+B (e.g. 011F engine run time seconds, 0121 distance w/ MIL on km).
+    private fun parseTwoByte(response: String, prefix: String, match: String): Int {
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains(match)) {
+                val hex = clean.substringAfter(match).take(4)
+                markPidStatus(prefix, true)
+                Integer.parseInt(hex, 16)
+            } else {
+                markPidStatus(prefix, false)
+                0
+            }
+        } catch (_: Exception) { 0 }
+    }
+
+    // 2 bytes, (A*256+B)*100/255 (e.g. 0143 absolute load value, %).
+    private fun parseTwoByteScaled(response: String, prefix: String, match: String): Int {
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains(match)) {
+                val hex = clean.substringAfter(match).take(4)
+                markPidStatus(prefix, true)
+                (Integer.parseInt(hex, 16) * 100) / 255
+            } else {
+                markPidStatus(prefix, false)
+                0
+            }
+        } catch (_: Exception) { 0 }
+    }
+
+    // 010E Timing Advance: 1 byte, A/2 - 64, degrees (signed - can be negative pre-TDC).
+    private fun parseTimingAdvance(response: String): Int {
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains("410E")) {
+                val hex = clean.substringAfter("410E").take(2)
+                markPidStatus("010E", true)
+                (Integer.parseInt(hex, 16) / 2) - 64
+            } else {
+                markPidStatus("010E", false)
+                0
+            }
+        } catch (_: Exception) { 0 }
+    }
+
+    // 013C/013D Catalyst Temperature: 2 bytes, ((A*256+B)/10) - 40, °C.
+    private fun parseCatalystTemp(response: String, prefix: String, match: String): Int {
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains(match)) {
+                val hex = clean.substringAfter(match).take(4)
+                markPidStatus(prefix, true)
+                (Integer.parseInt(hex, 16) / 10) - 40
+            } else {
+                markPidStatus(prefix, false)
+                0
+            }
+        } catch (_: Exception) { 0 }
+    }
+
+    // 0106-0109 Fuel Trims: 1 byte, (A-128)*100/128, % (negative = trimming leaner).
+    private fun parseFuelTrim(response: String, prefix: String, match: String): Int {
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains(match)) {
+                val hex = clean.substringAfter(match).take(2)
+                markPidStatus(prefix, true)
+                ((Integer.parseInt(hex, 16) - 128) * 100) / 128
+            } else {
+                markPidStatus(prefix, false)
+                0
+            }
+        } catch (_: Exception) { 0 }
+    }
+
+    // 0114/0118 O2 Sensor: 2 bytes - A = voltage (A*5 mV, 0-1275mV range), B = short-term fuel
+    // trim ((B-128)*100/128 %, or "not used" if 0xFF - not specially handled here, an unused
+    // sensor's trim value just isn't meaningful and the UI has no slot for it yet anyway).
+    private fun parseO2Sensor(response: String, prefix: String, match: String): Pair<Int, Int> {
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains(match)) {
+                val hex = clean.substringAfter(match).take(4)
+                markPidStatus(prefix, true)
+                val a = Integer.parseInt(hex.take(2), 16)
+                val b = Integer.parseInt(hex.substring(2, 4), 16)
+                (a * 5) to (((b - 128) * 100) / 128)
+            } else {
+                markPidStatus(prefix, false)
+                0 to 0
+            }
+        } catch (_: Exception) { 0 to 0 }
+    }
+
+    // 0144 Commanded Equivalence Ratio: 2 bytes, (A*256+B)/32768, stored as ratio*100 (Int) since
+    // this feeds a Map<String, Int> - e.g. 100 means a ratio of 1.00 (stoichiometric).
+    private fun parseEquivalenceRatio(response: String, prefix: String, match: String): Int {
+        return try {
+            val clean = response.replace(" ", "")
+            if (clean.contains(match)) {
+                val hex = clean.substringAfter(match).take(4)
+                markPidStatus(prefix, true)
+                (Integer.parseInt(hex, 16) * 100) / 32768
+            } else {
+                markPidStatus(prefix, false)
                 0
             }
         } catch (_: Exception) { 0 }
@@ -1064,6 +1310,25 @@ class BluetoothOBDManager(
             PidMapping("7E0", "010F", "Intake air temp"),
             PidMapping("7E0", "0104", "Engine load"),
             PidMapping("7E0", "0146", "Ambient air temp"),
+            PidMapping("7E0", "010B", "Intake manifold pressure"),
+            PidMapping("7E0", "010E", "Timing advance"),
+            PidMapping("7E0", "011F", "Engine run time"),
+            PidMapping("7E0", "0121", "Distance with MIL on"),
+            PidMapping("7E0", "013C", "Catalyst temp B1S1"),
+            PidMapping("7E0", "013D", "Catalyst temp B2S1"),
+            PidMapping("7E0", "0106", "Short fuel trim B1"),
+            PidMapping("7E0", "0107", "Long fuel trim B1"),
+            PidMapping("7E0", "0108", "Short fuel trim B2"),
+            PidMapping("7E0", "0109", "Long fuel trim B2"),
+            PidMapping("7E0", "0114", "O2 sensor B1S1"),
+            PidMapping("7E0", "0118", "O2 sensor B2S1"),
+            PidMapping("7E0", "0143", "Absolute load"),
+            PidMapping("7E0", "0144", "Commanded equivalence ratio"),
+            PidMapping("7E0", "0145", "Relative throttle position"),
+            PidMapping("7E0", "0147", "Throttle position B"),
+            PidMapping("7E0", "0149", "Pedal position D"),
+            PidMapping("7E0", "014A", "Pedal position E"),
+            PidMapping("7E0", "014C", "Commanded throttle actuator"),
             PidMapping("7E0", "0101", "MIL status / DTC count"),
             PidMapping("7E0", "03", "Stored DTCs")
         )

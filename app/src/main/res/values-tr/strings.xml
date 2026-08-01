@@ -133,6 +133,10 @@
     <string name="bike_info_intake_temp">EMME SICAKLIĞI</string>
     <string name="bike_info_engine_load">MOTOR YÜKÜ</string>
     <string name="bike_info_ambient_temp">ORTAM SICAKLIĞI</string>
+    <string name="bike_info_map_pressure">EMME BASINCI</string>
+    <string name="bike_info_catalyst_temp">KATALİZÖR SICAKLIĞI</string>
+    <string name="bike_info_engine_runtime">MOTOR ÇALIŞMA SÜRESİ</string>
+    <string name="bike_info_distance_mil_on">MIL AÇIKKEN MESAFE</string>
     <string name="bike_info_high_tag">YÜKSEK</string>
     <string name="bike_info_no_dtc">Kayıtlı arıza kodu yok.</string>
     <string name="bike_info_dtc_unknown">Arıza kodlarını görmek için OBD\'ye bağlanın.</string>

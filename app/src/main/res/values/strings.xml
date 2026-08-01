@@ -133,6 +133,10 @@
     <string name="bike_info_intake_temp">INTAKE TEMP</string>
     <string name="bike_info_engine_load">ENGINE LOAD</string>
     <string name="bike_info_ambient_temp">AMBIENT TEMP</string>
+    <string name="bike_info_map_pressure">INTAKE PRESSURE</string>
+    <string name="bike_info_catalyst_temp">CATALYST TEMP</string>
+    <string name="bike_info_engine_runtime">ENGINE RUNTIME</string>
+    <string name="bike_info_distance_mil_on">DISTANCE W/ MIL ON</string>
     <string name="bike_info_high_tag">HIGH</string>
     <string name="bike_info_no_dtc">No stored trouble codes.</string>
     <string name="bike_info_dtc_unknown">Connect OBD to check for trouble codes.</string>
