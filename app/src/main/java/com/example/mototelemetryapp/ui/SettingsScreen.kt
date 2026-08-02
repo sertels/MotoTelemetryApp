@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.mototelemetryapp.BuildConfig
 import com.example.mototelemetryapp.MAX_RIDE_GRACE_PERIOD_MINUTES
 import com.example.mototelemetryapp.MIN_RIDE_GRACE_PERIOD_MINUTES
 import com.example.mototelemetryapp.R
@@ -174,6 +175,13 @@ fun SettingsScreen(
         }
 
         Spacer(modifier = Modifier.height(32.dp))
+        Text(
+            text = "v${BuildConfig.VERSION_NAME}",
+            color = Color(0xFF4A4A4A),
+            fontSize = 10.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
