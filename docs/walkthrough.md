@@ -1,102 +1,119 @@
-# Settings, Bike Info, Auto-Start, Diagnostics & Drive Backup/Restore Walkthrough
+# Development Walkthrough
 
-This round of work reorganizes app-wide settings into their own tab, adds hands-off ride tracking
-tied to the OBD adapter's connection state, surfaces check-engine diagnostics, adds a Bike Info
-tab documenting what the app actually reads off the ECU, and fixes (then extends) Google Drive
-backup into a full backup/restore flow.
+A current-state summary of every major subsystem in the app, organized by area rather than by
+when it was built. Kept up to date as features change — see `docs/implementation_plan.md` for the
+architectural patterns behind these.
 
-## Changes Made
+## 1. OBD/UDS Data Acquisition (`BluetoothOBDManager`)
 
-### 1. Settings Tab
-- New bottom-nav tab (`ui/SettingsScreen.kt`) holding every app-wide setting instead of
-  scattering toggles across the home screen: auto-start on OBD connect, the ride-continuation
-  grace period, battery-optimization exemption status, and language.
-- The one-time battery-optimization prompt was hoisted out of the home screen into `MainActivity`
-  top level so it fires on app launch regardless of which tab is showing.
+- Connects to a Bluetooth Classic (RFCOMM) ELM327-compatible adapter, remembers the last device
+  picked from the Panel's OBD badge dropdown, and falls back to auto-detecting a paired device by
+  name hint (`OBD`, `ELM327`, `VLINK`, `ICAR`, `VGATE`, `OBDLINK`, etc.) if none is remembered.
+- A 100ms data loop (`pollOnce()`) requests the hot, gauge-driving signals every tick: RPM, Speed,
+  Gear, Throttle, front/rear Brake, Lean angle (bike IMU), Coolant temp.
+- A slower tier (`pollSlowPids()`, same ~5s cadence as DTC polling) covers PIDs that don't need
+  100ms freshness: odometer, distance since DTC clear, fuel rate/level, battery voltage, intake/
+  ambient temp, engine load, MAP pressure, timing advance, engine runtime, distance with MIL on,
+  catalyst temp (both banks), fuel trims, O2 sensor voltage/trim, absolute load, equivalence ratio,
+  throttle positions, pedal positions, commanded throttle actuator. Results from both tiers are
+  merged (not replaced) into the same `Map<String, Int>` so slow-tier values persist between fast
+  refreshes.
+- **Confirmed sensor map:** every request this manager knows how to make lives in one place,
+  `BluetoothOBDManager.CONFIRMED_PID_MAP` — a `(header, command, signal name)` triple. Every parse
+  function reports whether its last response actually matched what was expected via
+  `markPidStatus()`, exposed as `pidStatus: StateFlow<Map<String, Boolean>>`. The Bike Info screen
+  renders this live, so the "confirmed" table reflects what's actually answering right now, not a
+  static claim.
+- **Dead-link detection:** `sendCommand()`/`readResponse()` intentionally swallow `IOException`
+  internally so one unsupported PID doesn't kill the polling loop — but that also means a genuinely
+  dead socket (adapter losing power when the ignition switches off) never used to surface. A
+  `consecutiveWriteFailures` counter now trips `disconnect()` after 8 failures in a row (roughly
+  one `pollOnce()` cycle), since a *write* failure (unlike a read timeout) only happens when the
+  RFCOMM link itself is broken.
+- **Check-engine diagnostics:** polls Mode 01 PID 01 (MIL status + DTC count) every ~5s, fetches
+  Mode 03 (stored codes) only when there's something to fetch, decodes per SAE J2012, and supports
+  clearing via Mode 04 (`clearDtcs()`), gated behind a confirmation dialog since it resets ECU
+  readiness monitors.
+- **Diagnostic sweep tools**, all serialized through one `Mutex` so they can't interleave with the
+  regular polling loop on the same serial socket:
+  - `sweepStandardPidSupport()` — safe, standard Mode 01 PID 00/20/40… bitmask discovery.
+  - The original DID sweep — probes manufacturer UDS DIDs across `DEFAULT_SWEEP_HEADERS` (`7E0`
+    engine ECU, `7E1` ABS/IMU only — `7E2`-`7E7` are deliberately excluded since probing unconfirmed
+    headers is suspected of causing a dash/start-stop hiccup on this bike).
+  - `trySecuritySessionProbe()` — **explicitly risky**: sends `10 03` (UDS Extended Diagnostic
+    Session) then re-probes the two still-unmapped brake DIDs (`43FE`/`43FF`), always returns to
+    Default Session (`10 01`) before finishing. Never auto-invoked; gated behind a UI confirmation
+    dialog telling the rider to only run it with the engine off, since unlike every other query in
+    this app it changes ECU session state rather than just reading.
+  - `startCanMonitor(durationSeconds)` — passive, read-only raw CAN bus capture (`ATH1` + `ATMA`).
+    Reads are wrapped in a timeout so a quiet bus (e.g. ignition-on/engine-off) can't hang the
+    socket indefinitely; auto-restarts `ATMA` on `BUFFER FULL` until the requested duration elapses;
+    throttles UI updates to every 20 frames plus a final flush so multi-minute captures don't thrash
+    the StateFlow. Used to reverse-engineer signals that aren't exposed via request/response at all
+    (e.g. lean angle, which the IMU appears to broadcast on the bus rather than answer on request).
 
-### 2. Auto-Start Tracking & Ride Continuation
-- `ObdAutoStartReceiver` (manifest-registered `BroadcastReceiver`) starts `TelemetryService` when
-  `ACTION_ACL_CONNECTED` fires for the previously-connected OBD device, if the setting is on. It
-  works even when the app process isn't running, since ACL-connect broadcasts are exempt from
-  Android's background-broadcast restrictions.
-- `TelemetryService` registers its own dynamic receiver for `ACL_CONNECTED`/`ACL_DISCONNECTED` on
-  the same device. On disconnect it drops the stale OBD link and starts a grace-period timer
-  (configurable in Settings, default 10 min); reconnecting before it expires resumes recording
-  into the *same* session, otherwise the ride is finalized via `stopSelf()`.
-- Fixed a duplicate-session bug: `TelemetryService.onStartCommand` used to spin up a brand new
-  session and telemetry loop on every call, so a flaky Bluetooth reconnect while already tracking
-  would overlap sessions. Guarded with a `trackingStarted` flag.
+## 2. Recording & Persistence
 
-### 3. Check-Engine Diagnostics (OBD Mode 01/03/04)
-- `BluetoothOBDManager` polls Mode 01 PID 01 every ~5s for MIL status and DTC count, then Mode 03
-  for the actual codes (decoded per SAE J2012, e.g. `0133` → `P0133`) only when there's something
-  to fetch.
-- A red "CHECK ENGINE" badge appears next to the OBD status badge on the Panel whenever the MIL is
-  on; tapping it lists the stored codes and offers "Clear Codes" (Mode 04) behind a second
-  confirmation dialog, since it resets ECU readiness monitors.
-- `ClearDtcsConfirmDialog` was extracted out of the dashboard's `CheckEngineBadge` so the Panel
-  badge and the Bike Info tab (below) share one implementation instead of duplicating it.
+- `TelemetryService` (foreground service) owns the actual ride-recording lifecycle: GPS, IMU
+  (lean/G-force via phone sensors, with a one-tap calibration to zero out mount tilt), and the OBD
+  data loop, all sampled and written to Room at 5Hz regardless of whether OBD is connected.
+- Binding (`bindService`, `BIND_AUTO_CREATE`) only runs the service's `onCreate()` — it does **not**
+  start recording. Recording only begins via an explicit `startService()` → `onStartCommand()`,
+  guarded by a `trackingStarted` flag so a flaky Bluetooth reconnect while already tracking can't
+  spin up a second overlapping session.
+- **Auto-start & ride continuation:** `ObdAutoStartReceiver` (manifest-registered, works even with
+  the app process dead, since ACL-connect broadcasts are exempt from background-broadcast
+  restrictions) starts the service when the remembered OBD device connects, if the setting is on.
+  `TelemetryService` also registers a dynamic receiver for `ACL_CONNECTED`/`ACL_DISCONNECTED` on
+  that device: on disconnect it drops the OBD link and starts a grace-period timer (configurable in
+  Settings, default 10 min); reconnecting before it expires resumes into the *same* session,
+  otherwise the ride is finalized.
+- Room DB uses `fallbackToDestructiveMigration()` (dev-only) with a safety net that snapshots the
+  raw DB file before a version-bump wipe.
 
-### 4. Bike Info Tab
-- New tab (`ui/BikeInfoScreen.kt`) between History and Analysis: model/engine identity plus the
-  live ECU odometer (piped through a new `obdRawData` flow from `BluetoothOBDManager` through
-  `TelemetryService`/`DashboardViewModel` — the odometer isn't part of the recorded
-  `TelemetryRecord` shape, so it needed its own path), an engine-health stat grid (coolant, fuel
-  level, fuel rate, plus a `--` placeholder for battery voltage since no PID is mapped for it yet),
-  a permanent diagnostics card, a reference table of confirmed CAN header/DID → signal mappings
-  (`BluetoothOBDManager.CONFIRMED_PID_MAP`), and a shortcut into the existing diagnostic sweep tool.
+## 3. UI / Navigation
 
-### 5. Google Drive Backup & Restore
-- **Backup was broken.** It mixed the modern Credential Manager / Authorization API sign-in flow
-  with the legacy `GoogleAccountCredential` (Account-Manager-based) path for the actual Drive API
-  calls — two auth systems that don't share state — and one code path used a hardcoded placeholder
-  `Account("authorized", "com.google")` instead of the signed-in user. `GoogleDriveManager` now
-  builds the Drive client directly from the OAuth access token the Authorization API returns.
-- Added a WAL checkpoint (`AppDatabase.checkpoint()`) before copying the database file, since Room
-  defaults to WAL journal mode and a backup taken right after a ride could otherwise miss writes
-  still sitting in the `-wal` file.
-- **Restore, new:** lists backups from the Drive appDataFolder, lets the user pick one plus a
-  Replace/Merge choice, downloads it, and imports it via raw SQLite reads into the live Room
-  database (`data/BackupRestore.kt`) — Merge skips sessions whose `startTime` already exists
-  locally, Replace wipes local data first.
-- The restore dialog distinguishes loading / error / empty states (`driveBackups: List<...>?`,
-  null = not loaded or failed) so a failed sign-in doesn't look like "no backups found".
-- **The actual root cause of the remaining failures was Google Cloud Console configuration, not
-  code:** `setServerClientId(...)` was pointed at the app's *Android* OAuth client, but Credential
-  Manager's Google Sign-In requires a *Web application* client ID there regardless of platform —
-  using the Android one fails with `[28444] Developer console is not set up correctly`. A Web
-  client was created in the same project and the code updated to reference it. Separately, the
-  OAuth consent screen was in "Testing" status with zero test users, which blocks sign-in with
-  `403: access_denied` even for the project owner — fixed by adding the account under
-  Audience → Test users.
+- Bottom nav and the Home screen's Quick Access grid share the same tab order: **Panel → History →
+  Analysis → Bike Info → Settings**.
+- **Home:** last-ride card, fuel level + estimated range, a service-interval countdown, today's
+  ride stats, and Start Tracking/Stop/Backup/Restore controls. The OBD status badge lists paired
+  Bluetooth devices directly via `getPairedBluetoothDeviceEntries()` — a plain
+  `BluetoothManager.adapter.bondedDevices` read that needs no service binding, so opening the
+  device picker from Home can never accidentally trigger service creation or a navigation jump.
+- **Panel:** Speed/Gear/RPM/Throttle/Brake gauges, the lean gauge (phone or bike source, tap to
+  calibrate), and the check-engine badge.
+- **History:** recorded routes as polylines on a Google Map, with distance/duration/average-speed
+  overlay.
+- **Analysis:** session list (sparkline, stats, rename, delete) plus a detail view with four Vico
+  charts — Speed & RPM, Lean Angle, Lateral/Longitudinal G-Force, and Altitude.
+- **Bike Info:** identity card + live odometer, an engine-health stat grid, a permanent diagnostics
+  card, the live sensor-status table (`PidMapTable`, one row per `CONFIRMED_PID_MAP` entry with a
+  green/red/gray status dot), the standard-PID sweep, the manufacturer DID sweep, the risky
+  extended-session probe (warm-colored, its own confirmation dialog), and the CAN monitor (duration
+  picker, live frame count, share-to-text export).
+- **Settings:** auto-start toggle, grace-period stepper, battery-optimization exemption status,
+  diagnostic log sharing, language picker.
 
-### 6. Housekeeping
-- Removed `.artifacts/` (leftover session-scratch output from an earlier tool, three UUID-named
-  folders of auto-generated planning docs) from version control and added it to `.gitignore`.
+## 4. Cloud Backup & Restore
 
-## Verification Steps
+- `GoogleDriveManager` builds the Drive client directly from the OAuth access token returned by the
+  modern Credential Manager / Authorization API sign-in flow (no legacy `GoogleAccountCredential`).
+- Backups checkpoint the Room WAL file before copying the database, so a backup taken right after a
+  ride doesn't miss writes still sitting in `-wal`.
+- Restore lists backups from the Drive `appDataFolder`, lets the user pick one plus a Replace/Merge
+  choice, downloads it, and imports it via raw SQLite reads (`data/BackupRestore.kt`) — Merge skips
+  sessions whose `startTime` already exists locally, Replace wipes local data first.
+- Requires a Web-application OAuth client (not the Android client) as the `setServerClientId(...)`
+  token audience, and every signing-in account added under Audience → Test users while the consent
+  screen is in Testing status — see `README.md` setup steps.
 
-1. **Settings:** Toggle auto-start, adjust the grace-period stepper, confirm the battery banner
-   reflects actual exemption status, switch language and confirm every screen updates.
-2. **Bike Info:** Open the tab with OBD disconnected (should show `--`/zeros, not crash), connect
-   OBD and confirm coolant/fuel/odometer update live, tap the sweep shortcut and confirm the
-   existing sweep dialog opens.
-3. **Check Engine:** Ride with an active DTC (or simulate), confirm the badge appears with the
-   correct code(s), tap Clear Codes, confirm the two-step confirm dialog and that the badge clears.
-4. **Auto-start/continuation:** Power the OBD adapter on with the setting enabled and confirm
-   tracking starts unprompted; power off and back on within the grace period and confirm records
-   continue into the same session (check `sessionId` doesn't change); exceed the grace period and
-   confirm a new session starts on reconnect.
-5. **Backup/Restore (verified end-to-end on a physical device, not just the emulator):** Tap
-   Backup, sign in, confirm `GoogleDriveManager: Backup successfully completed.` in logcat. Tap
-   Restore, confirm the dialog lists backups by date, pick one with Merge, confirm
-   "Geri yükleme başarılı!" and that a previously-missing session now appears in "Last Ride".
+## Verification Notes
 
-## Project Status
-- **Auth:** Modern Credential Manager + Authorization API, using a Web OAuth client as the token
-  audience (not the Android client) — this was the load-bearing fix.
-- **Backup/Restore:** Google Drive appDataFolder, WAL-checkpointed backups, Merge/Replace restore.
-- **Diagnostics:** MIL/DTC read (Mode 01/03) and clear (Mode 04), reference PID map, sweep tool.
-- **Automation:** OBD-connect-triggered auto-start with grace-period ride continuation.
-- **Analytics:** Session tracking with Vico line charts and absolute fuel metrics (prior work).
-- **Core:** Professional OBD2 (UDS) & IMU integration with Dual Distance tracking (prior work).
+- UI/navigation-affecting changes are verified via `adb` (cold launch, screenshot, exercise the
+  interaction path) before being reported as done, not just built and unit-tested — a real
+  regression (Home unexpectedly jumping straight to Panel) shipped once from binding side effects
+  that weren't caught until a screenshot was taken.
+- `./gradlew testDebugUnitTest` covers parsing logic (e.g. `testGearParsing`) that's easy to break
+  silently — a logging call added inside `parseGear()`'s success branch once corrupted the returned
+  gear value because `Log.w` throws in the unmocked JVM test environment and the outer catch-all
+  converted that into a wrong return value.
