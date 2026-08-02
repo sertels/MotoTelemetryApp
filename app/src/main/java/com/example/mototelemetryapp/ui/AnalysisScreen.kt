@@ -227,9 +227,15 @@ fun SessionCard(
             // Left/right lean and lateral/longitudinal G each kept as separate stats rather than
             // combined into one magnitude - direction is part of what happened (a hard corner and
             // a hard stop, or a left sweeper and a right one, aren't the same kind of "hard").
+            // Two rows of 2, not one row of 4 - "Maks Boyuna G" is long enough that a 4-across
+            // row ran out of width and wrapped its label onto a second line, misaligning it
+            // against the other three (seen on a real device, 2026-08-02).
             Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 StatItem(label = stringResource(R.string.stat_max_lean_left), value = "%.0f°".format(session.maxLeanLeft))
                 StatItem(label = stringResource(R.string.stat_max_lean_right), value = "%.0f°".format(session.maxLeanRight))
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 StatItem(label = stringResource(R.string.stat_max_g_lat), value = "%.2fg".format(session.maxGForceLat))
                 StatItem(label = stringResource(R.string.stat_max_g_lon), value = "%.2fg".format(session.maxGForceLon))
             }

@@ -120,8 +120,17 @@ class OrientationManager(context: Context) : SensorEventListener, OrientationSou
                         0f
                     }
                     if (impliedRateDegPerSec <= MAX_ROLL_RATE_DEG_PER_SEC) {
-                        rawRoll = candidateRoll
-                        _leanAngle.value = normalizeAngle(rawRoll - rollOffset)
+                        val candidateLean = normalizeAngle(candidateRoll - rollOffset)
+                        // The rate gate above only catches a glitch that jumps in a single
+                        // sample; one spread across 2-3 samples (each under the rate threshold on
+                        // its own) still sails through it and shows up as a spike to ~170deg on
+                        // the Analysis lean chart (seen on a real ride, 2026-08-02) - a value no
+                        // street motorcycle lean ever approaches. Gate on the absolute result too,
+                        // with generous headroom above any real achievable lean.
+                        if (abs(candidateLean) <= MAX_PLAUSIBLE_LEAN_DEG) {
+                            rawRoll = candidateRoll
+                            _leanAngle.value = candidateLean
+                        }
                     }
                 }
             }
@@ -174,6 +183,9 @@ class OrientationManager(context: Context) : SensorEventListener, OrientationSou
         // Generous headroom above any real lean-change rate a motorcycle could produce, so this
         // only ever catches sensor glitches, never a genuinely fast flick into a corner.
         private const val MAX_ROLL_RATE_DEG_PER_SEC = 400f
+        // MotoGP-level track lean tops out around 65-69deg; this is a street bike app, so 70deg
+        // is already generous headroom above anything a real ride could produce.
+        private const val MAX_PLAUSIBLE_LEAN_DEG = 70f
         private const val G_FORCE_SMOOTHING_ALPHA = 0.25f
     }
 }
