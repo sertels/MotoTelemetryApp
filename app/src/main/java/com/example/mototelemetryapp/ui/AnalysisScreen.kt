@@ -343,8 +343,15 @@ private fun TelemetryLineChart(
         val stride = (records.size / TARGET_CHART_POINTS).coerceAtLeast(1)
         val startTimestamp = records.first().timestamp
         val sampled = records.filterIndexed { index, _ -> index % stride == 0 }
+        // Whole elapsed seconds, not fractional minutes: a rounded-but-still-Double x value (the
+        // previous approach) carries binary floating-point noise (12.35 stored as
+        // 12.349999999999998), which Vico's GCD-based tick computation treats as "too precise"
+        // and throws on - and that throw happens inside Vico's own internal update coroutine
+        // (CartesianChartModelProducer's collectAsState collector), not inside the runTransaction
+        // block below, so the try/catch there can't catch it. Integer seconds have zero decimal
+        // places, so there's nothing for that check to trip on.
         val xValues = sampled.map { record ->
-            ((record.timestamp - startTimestamp) / 60_000.0 * 100).roundToInt() / 100.0
+            ((record.timestamp - startTimestamp) / 1000L).toDouble()
         }
         val seriesValues = seriesSelectors.map { selector -> sampled.map(selector) }
         xValues to seriesValues
@@ -380,7 +387,7 @@ private fun TelemetryLineChart(
         if (!showError) {
             val elapsedTimeFormatter = remember {
                 CartesianValueFormatter { value, _, _ ->
-                    val totalSeconds = (value * 60).roundToInt().coerceAtLeast(0)
+                    val totalSeconds = value.roundToInt().coerceAtLeast(0)
                     "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
                 }
             }
