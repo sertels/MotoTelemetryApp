@@ -5,10 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -85,24 +84,34 @@ fun AnalysisScreen(
         }
     } else {
         val records by getRecords(selectedSession!!.id).collectAsState(initial = emptyList())
-        
-        Column(
+
+        // LazyColumn, not a plain Column+verticalScroll: each chart below is a fairly heavy
+        // Vico CartesianChartHost. With a plain Column all 4 are composed/measured/drawn at once
+        // regardless of scroll position, which overloaded the main thread badly enough on a real
+        // ~1hr ride that the first chart's data line still hadn't appeared 5+ seconds after
+        // opening the screen, and scrolling itself was janky (confirmed via a timestamped
+        // adb screenshot burst, 2026-08-02). Lazy items mean only the on-screen chart(s) pay
+        // that cost.
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFF121212))
-                .verticalScroll(rememberScrollState())
         ) {
-            TextButton(onClick = { selectedSession = null }) {
-                Text(stringResource(R.string.back_to_sessions), color = TelemetryAccent)
+            item {
+                Column {
+                    TextButton(onClick = { selectedSession = null }) {
+                        Text(stringResource(R.string.back_to_sessions), color = TelemetryAccent)
+                    }
+                    Text(
+                        text = selectedSession!!.name,
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
             }
-            Text(
-                text = selectedSession!!.name,
-                color = Color.White,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(16.dp)
-            )
-            SessionDetailView(records = records)
+            sessionDetailCharts(records = records)
         }
     }
 }
@@ -284,43 +293,53 @@ fun StatItem(label: String, value: String) {
 // the plotted points and forcing a fit-to-content zoom below is what actually fixes that.
 private const val TARGET_CHART_POINTS = 400
 
-@Composable
-fun SessionDetailView(records: List<TelemetryRecord>) {
+// One LazyColumn item per chart (see the LazyColumn comment in AnalysisScreen) so each chart's
+// composition/layout/draw cost is only paid when it's actually scrolled into view.
+private fun LazyListScope.sessionDetailCharts(records: List<TelemetryRecord>) {
     if (records.isEmpty()) return
 
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp)
-    ) {
+    val chartModifier = Modifier.fillMaxWidth().padding(16.dp)
+
+    item {
         TelemetryLineChart(
             records = records,
             legend = stringResource(R.string.chart_legend),
             seriesSelectors = listOf({ it.speed.toFloat() }, { it.rpm.toFloat() / 100f }),
-            seriesColors = listOf(Color.White, TelemetryAccent)
+            seriesColors = listOf(Color.White, TelemetryAccent),
+            modifier = chartModifier
         )
-        // Phone-sourced (leanAnglePhone/gForceLat/gForceLon), not OBD-sourced - these got a real
-        // noise-smoothing fix (EMA + rate-of-change gating in OrientationManager) on 2026-08-01
-        // and are trustworthy for a timeline. Bike-sourced fields (gear, lean-bike, odometer) were
-        // still failing to read on a real ride as of that date, so they aren't charted yet.
+    }
+    // Phone-sourced (leanAnglePhone/gForceLat/gForceLon), not OBD-sourced - these got a real
+    // noise-smoothing fix (EMA + rate-of-change gating in OrientationManager) on 2026-08-01
+    // and are trustworthy for a timeline. Bike-sourced fields (gear, lean-bike, odometer) were
+    // still failing to read on a real ride as of that date, so they aren't charted yet.
+    item {
         TelemetryLineChart(
             records = records,
             legend = stringResource(R.string.chart_legend_lean),
             seriesSelectors = listOf({ it.leanAnglePhone }),
-            seriesColors = listOf(Color.White)
+            seriesColors = listOf(Color.White),
+            modifier = chartModifier
         )
+    }
+    item {
         TelemetryLineChart(
             records = records,
             legend = stringResource(R.string.chart_legend_gforce),
             seriesSelectors = listOf({ it.gForceLat }, { it.gForceLon }),
-            seriesColors = listOf(Color.White, TelemetryAccent)
+            seriesColors = listOf(Color.White, TelemetryAccent),
+            modifier = chartModifier
         )
-        // GPS-sourced, not OBD - reliable for the same reason distance/route already use GPS
-        // elsewhere in this screen rather than the bike's odometer.
+    }
+    // GPS-sourced, not OBD - reliable for the same reason distance/route already use GPS
+    // elsewhere in this screen rather than the bike's odometer.
+    item {
         TelemetryLineChart(
             records = records,
             legend = stringResource(R.string.chart_legend_altitude),
             seriesSelectors = listOf({ it.altitude.toFloat() }),
-            seriesColors = listOf(Color.White)
+            seriesColors = listOf(Color.White),
+            modifier = chartModifier
         )
     }
 }
@@ -334,7 +353,8 @@ private fun TelemetryLineChart(
     records: List<TelemetryRecord>,
     legend: String,
     seriesSelectors: List<(TelemetryRecord) -> Float>,
-    seriesColors: List<Color>
+    seriesColors: List<Color>,
+    modifier: Modifier = Modifier
 ) {
     val modelProducer = remember { CartesianChartModelProducer() }
     var showError by remember { mutableStateOf(false) }
@@ -372,7 +392,7 @@ private fun TelemetryLineChart(
         }
     }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = modifier) {
         if (showError) {
             Text(
                 text = stringResource(R.string.chart_error),
@@ -410,6 +430,14 @@ private fun TelemetryLineChart(
                 // Content-fit so the whole (downsampled) ride is visible without scrolling by
                 // default - pinch-zoom still works from there for a closer look at one section.
                 zoomState = rememberVicoZoomState(initialZoom = Zoom.Content),
+                // Vico's default diff/entrance animation draws the line growing in over ~500ms -
+                // harmless alone, but with the main thread already under load from four charts
+                // (see the LazyColumn comment above) each animation frame was itself taking
+                // hundreds of ms, stretching what should be sub-second into 5+ seconds before a
+                // line was visible at all (confirmed via a timestamped screenshot burst,
+                // 2026-08-02). Disabling it makes the chart paint once, fully formed.
+                animationSpec = null,
+                runInitialAnimation = false,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(200.dp)
