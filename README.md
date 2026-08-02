@@ -71,10 +71,6 @@ The application leverages the fact that this motorcycle shares the **BMW F900 ar
 </tr>
 </table>
 
-Bike Info is the most feature-dense screen — the grid above only shows what fits above the fold. Full scroll, showing the live sensor-status table and every diagnostic tool:
-
-<img src="docs/screenshots/bike_info_full.png" alt="Bike Info screen, full scroll" width="320"/>
-
 - **Main Menu:** Last Ride, Fuel, and Service info cards, Quick Access shortcuts (Panel/History/Analysis/Bike Info/Settings), and Start Tracking/Stop/Backup/Restore controls.
 - **Panel:** Displays Speed, Gear, RPM, Throttle, and Brake bars. The lean gauge tilts in real-time based on the selected sensor (phone or bike), with a tap-to-calibrate button and a phone/motorcycle icon toggle. A check-engine badge appears next to the OBD status badge whenever the MIL is on, showing the stored DTCs and a clear-codes action.
 - **History:** View recorded routes as Polylines on the map, with a KM/duration/average speed overlay.
