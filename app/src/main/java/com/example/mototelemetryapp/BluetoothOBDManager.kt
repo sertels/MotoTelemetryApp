@@ -192,7 +192,15 @@ class BluetoothOBDManager(
             closeSocketQuietly()
 
             try {
-                socket = obdDevice.createRfcommSocketToServiceRecord(obdUuid)
+                // Insecure, not secure, RFCOMM: a real diagnostic.log (2026-08-02) showed every
+                // connect attempt over an 8-minute span failing immediately with "socket closed" /
+                // "read failed... ret: -1" right after the RFCOMM handshake, while a different OBD
+                // app connected to the same adapter in the same state without issue. That's the
+                // known failure signature of createRfcommSocketToServiceRecord() (secure RFCOMM)
+                // against cheap ELM327 clone boards that don't correctly implement the Bluetooth
+                // security/encryption negotiation it requires - createInsecureRfcommSocketToServiceRecord()
+                // skips that negotiation and is what most working OBD apps use for this reason.
+                socket = obdDevice.createInsecureRfcommSocketToServiceRecord(obdUuid)
                 socket?.connect()
                 outputStream = socket?.outputStream
                 inputStream = socket?.inputStream
