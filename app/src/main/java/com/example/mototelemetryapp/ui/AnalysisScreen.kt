@@ -5,9 +5,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -111,31 +112,30 @@ fun AnalysisScreen(
             }
         }
 
-        // LazyColumn, not a plain Column+verticalScroll: each chart below is a fairly heavy
-        // Vico CartesianChartHost. With a plain Column all 4 are composed/measured/drawn at once
-        // regardless of scroll position, which overloaded the main thread badly enough on a real
-        // ~1hr ride that the first chart's data line still hadn't appeared 5+ seconds after
-        // opening the screen. Lazy items mean only the on-screen chart(s) pay that cost.
-        LazyColumn(
+        // A LazyColumn here (tried 2026-08-02) still recomposes/redraws a chart from scratch
+        // every time it scrolls back into view, since off-screen lazy items get disposed - that
+        // showed up as jank exactly while scrolling. Once the two real costs were fixed (the
+        // dense default axis guideline redrawn every frame, and each chart redundantly
+        // downsampling the full ~18k-record ride), a plain Column pays the render cost for all
+        // 4 charts once, up front, and scrolling afterward just translates already-drawn layers -
+        // nothing left to recompute mid-scroll.
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFF121212))
+                .verticalScroll(rememberScrollState())
         ) {
-            item {
-                Column {
-                    TextButton(onClick = { selectedSession = null }) {
-                        Text(stringResource(R.string.back_to_sessions), color = TelemetryAccent)
-                    }
-                    Text(
-                        text = selectedSession!!.name,
-                        color = Color.White,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(16.dp)
-                    )
-                }
+            TextButton(onClick = { selectedSession = null }) {
+                Text(stringResource(R.string.back_to_sessions), color = TelemetryAccent)
             }
-            chartBasis?.let { basis -> sessionDetailCharts(basis) }
+            Text(
+                text = selectedSession!!.name,
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(16.dp)
+            )
+            chartBasis?.let { basis -> SessionDetailCharts(basis) }
         }
     }
 }
@@ -319,53 +319,44 @@ fun StatItem(label: String, value: String) {
 // the plotted points and forcing a fit-to-content zoom below is what actually fixes that.
 private const val TARGET_CHART_POINTS = 400
 
-// One LazyColumn item per chart (see the LazyColumn comment in AnalysisScreen) so each chart's
-// composition/layout/draw cost is only paid when it's actually scrolled into view.
-private fun LazyListScope.sessionDetailCharts(basis: ChartBasis) {
+@Composable
+private fun SessionDetailCharts(basis: ChartBasis) {
     val chartModifier = Modifier.fillMaxWidth().padding(16.dp)
 
-    item {
-        TelemetryLineChart(
-            basis = basis,
-            legend = stringResource(R.string.chart_legend),
-            seriesSelectors = listOf({ it.speed.toFloat() }, { it.rpm.toFloat() / 100f }),
-            seriesColors = listOf(Color.White, TelemetryAccent),
-            modifier = chartModifier
-        )
-    }
+    TelemetryLineChart(
+        basis = basis,
+        legend = stringResource(R.string.chart_legend),
+        seriesSelectors = listOf({ it.speed.toFloat() }, { it.rpm.toFloat() / 100f }),
+        seriesColors = listOf(Color.White, TelemetryAccent),
+        modifier = chartModifier
+    )
     // Phone-sourced (leanAnglePhone/gForceLat/gForceLon), not OBD-sourced - these got a real
     // noise-smoothing fix (EMA + rate-of-change gating in OrientationManager) on 2026-08-01
     // and are trustworthy for a timeline. Bike-sourced fields (gear, lean-bike, odometer) were
     // still failing to read on a real ride as of that date, so they aren't charted yet.
-    item {
-        TelemetryLineChart(
-            basis = basis,
-            legend = stringResource(R.string.chart_legend_lean),
-            seriesSelectors = listOf({ it.leanAnglePhone }),
-            seriesColors = listOf(Color.White),
-            modifier = chartModifier
-        )
-    }
-    item {
-        TelemetryLineChart(
-            basis = basis,
-            legend = stringResource(R.string.chart_legend_gforce),
-            seriesSelectors = listOf({ it.gForceLat }, { it.gForceLon }),
-            seriesColors = listOf(Color.White, TelemetryAccent),
-            modifier = chartModifier
-        )
-    }
+    TelemetryLineChart(
+        basis = basis,
+        legend = stringResource(R.string.chart_legend_lean),
+        seriesSelectors = listOf({ it.leanAnglePhone }),
+        seriesColors = listOf(Color.White),
+        modifier = chartModifier
+    )
+    TelemetryLineChart(
+        basis = basis,
+        legend = stringResource(R.string.chart_legend_gforce),
+        seriesSelectors = listOf({ it.gForceLat }, { it.gForceLon }),
+        seriesColors = listOf(Color.White, TelemetryAccent),
+        modifier = chartModifier
+    )
     // GPS-sourced, not OBD - reliable for the same reason distance/route already use GPS
     // elsewhere in this screen rather than the bike's odometer.
-    item {
-        TelemetryLineChart(
-            basis = basis,
-            legend = stringResource(R.string.chart_legend_altitude),
-            seriesSelectors = listOf({ it.altitude.toFloat() }),
-            seriesColors = listOf(Color.White),
-            modifier = chartModifier
-        )
-    }
+    TelemetryLineChart(
+        basis = basis,
+        legend = stringResource(R.string.chart_legend_altitude),
+        seriesSelectors = listOf({ it.altitude.toFloat() }),
+        seriesColors = listOf(Color.White),
+        modifier = chartModifier
+    )
 }
 
 // Shared by every chart in SessionDetailView - downsample-by-stride, real-elapsed-minutes-as-x
