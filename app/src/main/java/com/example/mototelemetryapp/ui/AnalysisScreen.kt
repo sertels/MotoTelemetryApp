@@ -41,10 +41,12 @@ fun AnalysisScreen(
     onRenameSession: (Session, String) -> Unit,
     onDeleteSession: (Session) -> Unit,
     getRecords: (Long) -> kotlinx.coroutines.flow.Flow<List<TelemetryRecord>>,
+    getSpeeds: (Long) -> kotlinx.coroutines.flow.Flow<List<Int>>,
+    getMaxRpm: (Long) -> kotlinx.coroutines.flow.Flow<Int?>,
     onViewRoute: (Long) -> Unit
 ) {
     var selectedSession by remember { mutableStateOf<Session?>(null) }
-    
+
     if (selectedSession == null) {
         Column(
             modifier = Modifier
@@ -68,7 +70,8 @@ fun AnalysisScreen(
                         onRename = { newName -> onRenameSession(session, newName) },
                         onDelete = { onDeleteSession(session) },
                         onViewRoute = { onViewRoute(session.id) },
-                        getRecords = getRecords
+                        getSpeeds = getSpeeds,
+                        getMaxRpm = getMaxRpm
                     )
                 }
             }
@@ -86,13 +89,6 @@ fun AnalysisScreen(
                 val stride = (records.size / TARGET_CHART_POINTS).coerceAtLeast(1)
                 val startTimestamp = records.first().timestamp
                 val sampled = records.filterIndexed { index, _ -> index % stride == 0 }
-                // Whole elapsed seconds, not fractional minutes: a rounded-but-still-Double x
-                // value carries binary floating-point noise (12.35 stored as
-                // 12.349999999999998), which Vico's GCD-based tick computation treats as "too
-                // precise" and throws on - and that throw happens inside Vico's own internal
-                // update coroutine, not inside TelemetryLineChart's runTransaction, so a
-                // try/catch there can't catch it. Integer seconds have zero decimal places, so
-                // there's nothing for that check to trip on.
                 val xValues = sampled.map { record ->
                     ((record.timestamp - startTimestamp) / 1000L).toDouble()
                 }
@@ -137,13 +133,18 @@ fun SessionCard(
     onRename: (String) -> Unit,
     onDelete: () -> Unit,
     onViewRoute: () -> Unit,
-    getRecords: (Long) -> Flow<List<TelemetryRecord>>
+    getSpeeds: (Long) -> Flow<List<Int>>,
+    getMaxRpm: (Long) -> Flow<Int?>
 ) {
     var showEditDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf(session.name) }
-    val records by getRecords(session.id).collectAsState(initial = emptyList())
-    
+    // Lighter than fetching every column of every record just for a sparkline + a max-RPM stat -
+    // that was refetching and remapping the whole ride (up to ~18k rows) for every visible card
+    // in this list, every time Analysis opened (2026-08-02).
+    val speeds by getSpeeds(session.id).collectAsState(initial = emptyList())
+    val maxRpm by getMaxRpm(session.id).collectAsState(initial = null)
+
     val dateStr = remember(session.startTime) {
         SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault()).format(Date(session.startTime))
     }
@@ -196,11 +197,11 @@ fun SessionCard(
                 }
             }
             
-            if (records.size >= 2) {
+            if (speeds.size >= 2) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(text = stringResource(R.string.speed), color = Color.Gray, fontSize = 10.sp)
                 Spacer(modifier = Modifier.height(4.dp))
-                SpeedSparkline(records = records)
+                SpeedSparkline(speeds = speeds)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -216,9 +217,9 @@ fun SessionCard(
             Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 StatItem(label = stringResource(R.string.stat_max_speed), value = "${session.maxSpeed} km/h")
                 StatItem(label = stringResource(R.string.stat_avg_speed), value = "${avgSpeedKmh.toInt()} km/h")
-                // Not stored on Session (no schema change needed) - derived straight from this
-                // card's own records, same as the sparkline above.
-                StatItem(label = stringResource(R.string.stat_max_rpm), value = "${records.maxOfOrNull { it.rpm } ?: 0}")
+                // Not stored on Session (no schema change needed) - a SQL MAX() aggregate query,
+                // not fetched-then-maxOf'd in Kotlin like the sparkline used to be.
+                StatItem(label = stringResource(R.string.stat_max_rpm), value = "${maxRpm ?: 0}")
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -272,19 +273,27 @@ fun SessionCard(
     }
 }
 
+// Sparkline is ~30dp tall - a few hundred points already exceed what's visually distinguishable,
+// so a long ride's full point count (up to ~18k) is wasted path complexity for no visual gain.
+private const val SPARKLINE_TARGET_POINTS = 150
+
 @Composable
-fun SpeedSparkline(records: List<TelemetryRecord>) {
-    val maxSpeed = (records.maxOfOrNull { it.speed } ?: 0).coerceAtLeast(1)
+fun SpeedSparkline(speeds: List<Int>) {
+    val sampled = remember(speeds) {
+        val stride = (speeds.size / SPARKLINE_TARGET_POINTS).coerceAtLeast(1)
+        speeds.filterIndexed { index, _ -> index % stride == 0 }
+    }
+    val maxSpeed = (sampled.maxOrNull() ?: 0).coerceAtLeast(1)
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
             .height(30.dp)
     ) {
-        val stepX = size.width / (records.size - 1)
+        val stepX = size.width / (sampled.size - 1)
         val path = androidx.compose.ui.graphics.Path()
-        records.forEachIndexed { index, record ->
+        sampled.forEachIndexed { index, speed ->
             val x = index * stepX
-            val y = size.height - (record.speed / maxSpeed.toFloat()) * size.height
+            val y = size.height - (speed / maxSpeed.toFloat()) * size.height
             if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
         drawPath(path = path, color = TelemetryAccent, style = Stroke(width = 1.5.dp.toPx()))

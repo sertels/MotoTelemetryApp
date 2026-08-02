@@ -215,8 +215,14 @@ class DashboardViewModel : ViewModel() {
         }
     }
 
-    fun getRecordsForSession(context: Context, sessionId: Long) = 
+    fun getRecordsForSession(context: Context, sessionId: Long) =
         AppDatabase.getDatabase(context).telemetryDao().getRecordsForSession(sessionId)
+
+    fun getSpeedsForSession(context: Context, sessionId: Long) =
+        AppDatabase.getDatabase(context).telemetryDao().getSpeedsForSession(sessionId)
+
+    fun getMaxRpmForSession(context: Context, sessionId: Long) =
+        AppDatabase.getDatabase(context).telemetryDao().getMaxRpmForSession(sessionId)
 
     private val _obdConnected = MutableStateFlow(false)
     val obdConnected = _obdConnected.asStateFlow()

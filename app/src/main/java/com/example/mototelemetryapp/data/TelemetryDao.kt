@@ -43,6 +43,16 @@ interface TelemetryDao {
     @Query("SELECT * FROM telemetry_records WHERE sessionId = :sessionId ORDER BY timestamp ASC")
     fun getRecordsForSession(sessionId: Long): Flow<List<TelemetryRecord>>
 
+    // Lighter than getRecordsForSession for the Analysis session list, where every visible
+    // SessionCard needs only these two things (a sparkline + a max-RPM stat) but was fetching and
+    // mapping every column of every row (up to ~18k on a real ride) just to get them - see the
+    // 2026-08-02 perf pass on AnalysisScreen/HistoryScreen.
+    @Query("SELECT speed FROM telemetry_records WHERE sessionId = :sessionId ORDER BY timestamp ASC")
+    fun getSpeedsForSession(sessionId: Long): Flow<List<Int>>
+
+    @Query("SELECT MAX(rpm) FROM telemetry_records WHERE sessionId = :sessionId")
+    fun getMaxRpmForSession(sessionId: Long): Flow<Int?>
+
     @Query("SELECT * FROM telemetry_records WHERE sessionId = :sessionId ORDER BY timestamp ASC")
     suspend fun getRecordsForSessionOnce(sessionId: Long): List<TelemetryRecord>
 

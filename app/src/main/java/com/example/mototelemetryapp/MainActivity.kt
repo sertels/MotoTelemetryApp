@@ -657,6 +657,12 @@ class MainActivity : AppCompatActivity() {
                                     getRecords = { sessionId ->
                                         dashboardViewModel.getRecordsForSession(context, sessionId)
                                     },
+                                    getSpeeds = { sessionId ->
+                                        dashboardViewModel.getSpeedsForSession(context, sessionId)
+                                    },
+                                    getMaxRpm = { sessionId ->
+                                        dashboardViewModel.getMaxRpmForSession(context, sessionId)
+                                    },
                                     onViewRoute = { sessionId -> navController.navigate("history/$sessionId") }
                                 )
                             }

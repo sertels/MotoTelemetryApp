@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -31,17 +32,51 @@ import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberUpdatedMarkerState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+// A route line doesn't need 5 points/second density - GPS points along a road are highly
+// correlated, so decimating for the drawn Polyline doesn't visibly change its shape. Distance is
+// still computed from every point (see RouteBasis below), just not drawn from every point.
+private const val ROUTE_TARGET_POINTS = 1500
+
+private class RouteBasis(
+    val drawPoints: List<LatLng>,
+    val bounds: LatLngBounds?,
+    val totalKm: Float
+)
+
 @Composable
 fun HistoryScreen(records: List<TelemetryRecord>) {
-    val points = remember(records) {
-        records.map { LatLng(it.latitude, it.longitude) }
-            .filter { it.latitude != 0.0 && it.longitude != 0.0 }
+    // Mapping/filtering every record (up to ~18k on a real ~1hr ride) plus a haversine sum over
+    // all of them was running synchronously in composition - the same "unmeasured main-thread
+    // work over the full record count" pattern that caused jank on the Analysis charts
+    // (2026-08-02). Doing it once here, off the main thread, avoids repeating that mistake.
+    val routeBasis by produceState<RouteBasis?>(initialValue = null, records) {
+        value = withContext(Dispatchers.Default) {
+            val allPoints = records.map { LatLng(it.latitude, it.longitude) }
+                .filter { it.latitude != 0.0 && it.longitude != 0.0 }
+            if (allPoints.isEmpty()) {
+                RouteBasis(emptyList(), null, 0f)
+            } else {
+                val stride = (allPoints.size / ROUTE_TARGET_POINTS).coerceAtLeast(1)
+                val drawPoints = allPoints.filterIndexed { index, _ -> index % stride == 0 }
+                val bounds = if (allPoints.size < 2) {
+                    null
+                } else {
+                    val builder = LatLngBounds.Builder()
+                    allPoints.forEach { builder.include(it) }
+                    builder.build()
+                }
+                RouteBasis(drawPoints, bounds, routeDistanceKm(allPoints))
+            }
+        }
     }
+    val points = routeBasis?.drawPoints ?: emptyList()
 
     val cameraPositionState = rememberCameraPositionState {
         position = if (points.isNotEmpty()) {
@@ -50,27 +85,18 @@ fun HistoryScreen(records: List<TelemetryRecord>) {
             CameraPosition.fromLatLngZoom(LatLng(41.0082, 28.9784), 10f) // İstanbul default
         }
     }
-
-    // Encloses the whole route so it opens already framed - the rider shouldn't have to pan/
-    // zoom by hand to find it. Null for a single-point (or empty) route, where a bounding box
-    // is degenerate; the initial camera position above already centers on that one point.
-    val routeBounds = remember(points) {
-        if (points.size < 2) return@remember null
-        val builder = LatLngBounds.Builder()
-        points.forEach { builder.include(it) }
-        builder.build()
-    }
     var isMapLoaded by remember { mutableStateOf(false) }
 
     // Fitting bounds needs the map's actual pixel size, which isn't available until it's
     // finished laying out - onMapLoaded below is what unblocks this.
-    LaunchedEffect(routeBounds, isMapLoaded) {
-        if (isMapLoaded && routeBounds != null) {
-            cameraPositionState.animate(CameraUpdateFactory.newLatLngBounds(routeBounds, 120))
+    LaunchedEffect(routeBasis, isMapLoaded) {
+        val bounds = routeBasis?.bounds
+        if (isMapLoaded && bounds != null) {
+            cameraPositionState.animate(CameraUpdateFactory.newLatLngBounds(bounds, 120))
         }
     }
 
-    val totalKm = remember(points) { routeDistanceKm(points) }
+    val totalKm = routeBasis?.totalKm ?: 0f
     val durationMin = remember(records) {
         if (records.size >= 2) (records.last().timestamp - records.first().timestamp) / 60000f else 0f
     }
