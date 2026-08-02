@@ -26,7 +26,9 @@ import com.example.mototelemetryapp.R
 import com.example.mototelemetryapp.data.Session
 import com.example.mototelemetryapp.data.TelemetryRecord
 import com.example.mototelemetryapp.ui.theme.TelemetryAccent
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottomAxis
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStartAxis
@@ -85,13 +87,35 @@ fun AnalysisScreen(
     } else {
         val records by getRecords(selectedSession!!.id).collectAsState(initial = emptyList())
 
+        // Downsampling touches every record in the ride (up to ~18k on a real ~1hr ride).
+        // Computing it once here, off the main thread, instead of redundantly inside each of the
+        // 4 charts below cuts that cost 4x and keeps it out of the composition/scroll path -
+        // doing it synchronously per-chart was still showing up as scroll jank even after the
+        // charts were split into LazyColumn items (confirmed via dumpsys gfxinfo, 2026-08-02).
+        val chartBasis by produceState<ChartBasis?>(initialValue = null, records) {
+            value = if (records.size < 2) null else withContext(Dispatchers.Default) {
+                val stride = (records.size / TARGET_CHART_POINTS).coerceAtLeast(1)
+                val startTimestamp = records.first().timestamp
+                val sampled = records.filterIndexed { index, _ -> index % stride == 0 }
+                // Whole elapsed seconds, not fractional minutes: a rounded-but-still-Double x
+                // value carries binary floating-point noise (12.35 stored as
+                // 12.349999999999998), which Vico's GCD-based tick computation treats as "too
+                // precise" and throws on - and that throw happens inside Vico's own internal
+                // update coroutine, not inside TelemetryLineChart's runTransaction, so a
+                // try/catch there can't catch it. Integer seconds have zero decimal places, so
+                // there's nothing for that check to trip on.
+                val xValues = sampled.map { record ->
+                    ((record.timestamp - startTimestamp) / 1000L).toDouble()
+                }
+                ChartBasis(sampled, xValues)
+            }
+        }
+
         // LazyColumn, not a plain Column+verticalScroll: each chart below is a fairly heavy
         // Vico CartesianChartHost. With a plain Column all 4 are composed/measured/drawn at once
         // regardless of scroll position, which overloaded the main thread badly enough on a real
         // ~1hr ride that the first chart's data line still hadn't appeared 5+ seconds after
-        // opening the screen, and scrolling itself was janky (confirmed via a timestamped
-        // adb screenshot burst, 2026-08-02). Lazy items mean only the on-screen chart(s) pay
-        // that cost.
+        // opening the screen. Lazy items mean only the on-screen chart(s) pay that cost.
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -111,10 +135,12 @@ fun AnalysisScreen(
                     )
                 }
             }
-            sessionDetailCharts(records = records)
+            chartBasis?.let { basis -> sessionDetailCharts(basis) }
         }
     }
 }
+
+private data class ChartBasis(val sampled: List<TelemetryRecord>, val xValues: List<Double>)
 
 @Composable
 fun SessionCard(
@@ -295,14 +321,12 @@ private const val TARGET_CHART_POINTS = 400
 
 // One LazyColumn item per chart (see the LazyColumn comment in AnalysisScreen) so each chart's
 // composition/layout/draw cost is only paid when it's actually scrolled into view.
-private fun LazyListScope.sessionDetailCharts(records: List<TelemetryRecord>) {
-    if (records.isEmpty()) return
-
+private fun LazyListScope.sessionDetailCharts(basis: ChartBasis) {
     val chartModifier = Modifier.fillMaxWidth().padding(16.dp)
 
     item {
         TelemetryLineChart(
-            records = records,
+            basis = basis,
             legend = stringResource(R.string.chart_legend),
             seriesSelectors = listOf({ it.speed.toFloat() }, { it.rpm.toFloat() / 100f }),
             seriesColors = listOf(Color.White, TelemetryAccent),
@@ -315,7 +339,7 @@ private fun LazyListScope.sessionDetailCharts(records: List<TelemetryRecord>) {
     // still failing to read on a real ride as of that date, so they aren't charted yet.
     item {
         TelemetryLineChart(
-            records = records,
+            basis = basis,
             legend = stringResource(R.string.chart_legend_lean),
             seriesSelectors = listOf({ it.leanAnglePhone }),
             seriesColors = listOf(Color.White),
@@ -324,7 +348,7 @@ private fun LazyListScope.sessionDetailCharts(records: List<TelemetryRecord>) {
     }
     item {
         TelemetryLineChart(
-            records = records,
+            basis = basis,
             legend = stringResource(R.string.chart_legend_gforce),
             seriesSelectors = listOf({ it.gForceLat }, { it.gForceLon }),
             seriesColors = listOf(Color.White, TelemetryAccent),
@@ -335,7 +359,7 @@ private fun LazyListScope.sessionDetailCharts(records: List<TelemetryRecord>) {
     // elsewhere in this screen rather than the bike's odometer.
     item {
         TelemetryLineChart(
-            records = records,
+            basis = basis,
             legend = stringResource(R.string.chart_legend_altitude),
             seriesSelectors = listOf({ it.altitude.toFloat() }),
             seriesColors = listOf(Color.White),
@@ -350,7 +374,7 @@ private fun LazyListScope.sessionDetailCharts(records: List<TelemetryRecord>) {
 // comment above.
 @Composable
 private fun TelemetryLineChart(
-    records: List<TelemetryRecord>,
+    basis: ChartBasis,
     legend: String,
     seriesSelectors: List<(TelemetryRecord) -> Float>,
     seriesColors: List<Color>,
@@ -359,22 +383,11 @@ private fun TelemetryLineChart(
     val modelProducer = remember { CartesianChartModelProducer() }
     var showError by remember { mutableStateOf(false) }
 
-    val chartData = remember(records) {
-        val stride = (records.size / TARGET_CHART_POINTS).coerceAtLeast(1)
-        val startTimestamp = records.first().timestamp
-        val sampled = records.filterIndexed { index, _ -> index % stride == 0 }
-        // Whole elapsed seconds, not fractional minutes: a rounded-but-still-Double x value (the
-        // previous approach) carries binary floating-point noise (12.35 stored as
-        // 12.349999999999998), which Vico's GCD-based tick computation treats as "too precise"
-        // and throws on - and that throw happens inside Vico's own internal update coroutine
-        // (CartesianChartModelProducer's collectAsState collector), not inside the runTransaction
-        // block below, so the try/catch there can't catch it. Integer seconds have zero decimal
-        // places, so there's nothing for that check to trip on.
-        val xValues = sampled.map { record ->
-            ((record.timestamp - startTimestamp) / 1000L).toDouble()
-        }
-        val seriesValues = seriesSelectors.map { selector -> sampled.map(selector) }
-        xValues to seriesValues
+    // basis.sampled/xValues are already downsampled to TARGET_CHART_POINTS (see AnalysisScreen),
+    // so this per-series mapping is cheap enough to stay synchronous here.
+    val chartData = remember(basis) {
+        val seriesValues = seriesSelectors.map { selector -> basis.sampled.map(selector) }
+        basis.xValues to seriesValues
     }
 
     LaunchedEffect(chartData) {
@@ -423,8 +436,8 @@ private fun TelemetryLineChart(
                             }
                         )
                     ),
-                    startAxis = rememberStartAxis(),
-                    bottomAxis = rememberBottomAxis(valueFormatter = elapsedTimeFormatter),
+                    startAxis = rememberStartAxis(guideline = null),
+                    bottomAxis = rememberBottomAxis(valueFormatter = elapsedTimeFormatter, guideline = null),
                 ),
                 modelProducer = modelProducer,
                 // Content-fit so the whole (downsampled) ride is visible without scrolling by
