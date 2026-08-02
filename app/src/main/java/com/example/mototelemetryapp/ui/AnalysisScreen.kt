@@ -17,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
@@ -30,19 +31,6 @@ import com.example.mototelemetryapp.ui.theme.TelemetryAccent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
-import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
-import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottomAxis
-import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStartAxis
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
-import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
-import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
-import com.patrykandpatrick.vico.compose.common.fill
-import com.patrykandpatrick.vico.core.cartesian.Zoom
-import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
-import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
-import com.patrykandpatrick.vico.core.cartesian.data.lineSeries
-import com.patrykandpatrick.vico.core.cartesian.layer.LineCartesianLayer
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.roundToInt
@@ -346,7 +334,8 @@ private fun SessionDetailCharts(basis: ChartBasis) {
         legend = stringResource(R.string.chart_legend_gforce),
         seriesSelectors = listOf({ it.gForceLat }, { it.gForceLon }),
         seriesColors = listOf(Color.White, TelemetryAccent),
-        modifier = chartModifier
+        modifier = chartModifier,
+        valueFormatter = { "%.2f".format(it) }
     )
     // GPS-sourced, not OBD - reliable for the same reason distance/route already use GPS
     // elsewhere in this screen rather than the bike's odometer.
@@ -359,95 +348,89 @@ private fun SessionDetailCharts(basis: ChartBasis) {
     )
 }
 
-// Shared by every chart in SessionDetailView - downsample-by-stride, real-elapsed-minutes-as-x
-// (rounded to avoid Vico's x-precision crash), and Zoom.Content are all load-bearing fixes from
-// getting the original Speed/RPM chart working on a real ~1hr ride, see the TARGET_CHART_POINTS
-// comment above.
+// Vico (2.0.0-alpha.28) cost us three separate perf/correctness bugs on this screen in one day -
+// an x-precision crash, a default axis guideline redrawn every frame, and per-chart work repeated
+// on every scroll-triggered recomposition - and even after fixing all three, per-frame cost during
+// scroll never got below ~40-85ms (dumpsys gfxinfo, 2026-08-01/02). Given the acceptance bar is
+// sub-1s render and zero scroll stutter, a hand-drawn Canvas chart (same technique as
+// SpeedSparkline above) removes the whole library's measurement/axis/guideline machinery: one
+// Path per series, three gridlines, a handful of Text labels. No pinch-zoom, but the fit-to-content
+// view already shows the whole (downsampled) ride at once.
 @Composable
 private fun TelemetryLineChart(
     basis: ChartBasis,
     legend: String,
     seriesSelectors: List<(TelemetryRecord) -> Float>,
     seriesColors: List<Color>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    valueFormatter: (Float) -> String = { "%.0f".format(it) }
 ) {
-    val modelProducer = remember { CartesianChartModelProducer() }
-    var showError by remember { mutableStateOf(false) }
-
     // basis.sampled/xValues are already downsampled to TARGET_CHART_POINTS (see AnalysisScreen),
-    // so this per-series mapping is cheap enough to stay synchronous here.
-    val chartData = remember(basis) {
-        val seriesValues = seriesSelectors.map { selector -> basis.sampled.map(selector) }
-        basis.xValues to seriesValues
+    // so this per-series mapping is trivial (≤400 items).
+    val seriesValues = remember(basis, seriesSelectors) {
+        seriesSelectors.map { selector -> basis.sampled.map(selector) }
     }
-
-    LaunchedEffect(chartData) {
-        try {
-            modelProducer.runTransaction {
-                lineSeries {
-                    val (xValues, seriesValues) = chartData
-                    seriesValues.forEach { values -> series(xValues, values) }
-                }
-            }
-            showError = false
-        } catch (e: Exception) {
-            android.util.Log.e("AnalysisScreen", "Error updating chart: ${e.message}", e)
-            showError = true
-        }
-    }
+    val yMin: Float
+    val yMax: Float
+    remember(seriesValues) {
+        val all = seriesValues.asSequence().flatten()
+        val rawMin = all.minOrNull() ?: 0f
+        val rawMax = all.maxOrNull() ?: 1f
+        // Keep a 0 baseline visible for all-positive series (speed/rpm/altitude); use the real
+        // range for series that cross zero (lean angle, g-force).
+        val min = if (rawMin > 0f) 0f else rawMin
+        val max = (if (rawMax < 0f) 0f else rawMax).coerceAtLeast(min + 0.01f)
+        min to max
+    }.let { (min, max) -> yMin = min; yMax = max }
+    val xMax = (basis.xValues.lastOrNull() ?: 1.0).coerceAtLeast(1.0)
 
     Column(modifier = modifier) {
-        if (showError) {
-            Text(
-                text = stringResource(R.string.chart_error),
-                color = Color.Red,
-                fontSize = 14.sp
-            )
-        } else {
-            Text(text = legend, color = Color.White, fontSize = 14.sp)
-        }
+        Text(text = legend, color = Color.White, fontSize = 14.sp)
         Spacer(modifier = Modifier.height(8.dp))
-
-        if (!showError) {
-            val elapsedTimeFormatter = remember {
-                CartesianValueFormatter { value, _, _ ->
-                    val totalSeconds = value.roundToInt().coerceAtLeast(0)
-                    "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp)
+                .background(Color(0xFF1A1A1A), RoundedCornerShape(8.dp))
+                .padding(8.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxHeight().width(36.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(valueFormatter(yMax), color = Color.Gray, fontSize = 9.sp)
+                Text(valueFormatter((yMax + yMin) / 2f), color = Color.Gray, fontSize = 9.sp)
+                Text(valueFormatter(yMin), color = Color.Gray, fontSize = 9.sp)
+            }
+            Column(modifier = Modifier.fillMaxHeight().weight(1f)) {
+                Canvas(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    val range = (yMax - yMin).takeIf { it > 0f } ?: 1f
+                    val gridColor = Color.White.copy(alpha = 0.12f)
+                    listOf(0f, 0.5f, 1f).forEach { frac ->
+                        val y = size.height * (1f - frac)
+                        drawLine(gridColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
+                    }
+                    seriesValues.forEachIndexed { seriesIndex, values ->
+                        val path = androidx.compose.ui.graphics.Path()
+                        values.forEachIndexed { i, v ->
+                            val x = (basis.xValues[i] / xMax).toFloat() * size.width
+                            val y = size.height - ((v - yMin) / range) * size.height
+                            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                        }
+                        drawPath(path = path, color = seriesColors[seriesIndex], style = Stroke(width = 1.5.dp.toPx()))
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(formatElapsed(0.0), color = Color.Gray, fontSize = 9.sp)
+                    Text(formatElapsed(xMax / 2), color = Color.Gray, fontSize = 9.sp)
+                    Text(formatElapsed(xMax), color = Color.Gray, fontSize = 9.sp)
                 }
             }
-            CartesianChartHost(
-                chart = rememberCartesianChart(
-                    rememberLineCartesianLayer(
-                        // Vico's own default palette is three shades of gray in dark theme -
-                        // it never actually matched the "White/Blue" legend text, which is why
-                        // both lines looked identically gray on a real device (2026-08-01).
-                        lineProvider = LineCartesianLayer.LineProvider.series(
-                            seriesColors.map { color ->
-                                rememberLine(LineCartesianLayer.LineFill.single(fill(color)))
-                            }
-                        )
-                    ),
-                    startAxis = rememberStartAxis(guideline = null),
-                    bottomAxis = rememberBottomAxis(valueFormatter = elapsedTimeFormatter, guideline = null),
-                ),
-                modelProducer = modelProducer,
-                // Content-fit so the whole (downsampled) ride is visible without scrolling by
-                // default - pinch-zoom still works from there for a closer look at one section.
-                zoomState = rememberVicoZoomState(initialZoom = Zoom.Content),
-                // Vico's default diff/entrance animation draws the line growing in over ~500ms -
-                // harmless alone, but with the main thread already under load from four charts
-                // (see the LazyColumn comment above) each animation frame was itself taking
-                // hundreds of ms, stretching what should be sub-second into 5+ seconds before a
-                // line was visible at all (confirmed via a timestamped screenshot burst,
-                // 2026-08-02). Disabling it makes the chart paint once, fully formed.
-                animationSpec = null,
-                runInitialAnimation = false,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
-                    .background(Color(0xFF1A1A1A), RoundedCornerShape(8.dp))
-                    .padding(8.dp)
-            )
         }
     }
+}
+
+private fun formatElapsed(seconds: Double): String {
+    val totalSeconds = seconds.roundToInt().coerceAtLeast(0)
+    return "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
 }
