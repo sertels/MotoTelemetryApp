@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Job
 import java.util.Calendar
 import kotlin.math.roundToInt
@@ -370,6 +371,14 @@ class DashboardViewModel : ViewModel() {
 
     fun connectObd(context: Context, address: String) {
         viewModelScope.launch {
+            // Tapping Connect from Home (before Panel/Bike Info ever bound the service) used to
+            // fail every single time - telemetryService was still null there, so this silently
+            // short-circuited to false via the elvis below. Bind (same autoCreate=true path
+            // Start Tracking/Panel already use) and wait for onServiceConnected first.
+            if (telemetryService == null) {
+                bindService(context)
+                withTimeoutOrNull(5000) { isServiceBound.first { it } }
+            }
             val connected = telemetryService?.connectObd(address) ?: false
             if (!connected) {
                 _obdConnectError.value = context.getString(R.string.obd_connect_failed)
