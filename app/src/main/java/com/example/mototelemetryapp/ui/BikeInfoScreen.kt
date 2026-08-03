@@ -776,7 +776,11 @@ private fun CanMonitorDialog(
         },
         text = {
             Column(modifier = Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
-                if (!running && frames.isEmpty()) {
+                // Used to be gated on frames.isEmpty() too, which hid this the moment a first
+                // capture finished (frames stays populated until the dialog/app restarts) -
+                // every run after the first silently reused whichever duration was last picked,
+                // reported 2026-08-03 as "always stuck at 8s" since 8 is durationSeconds' default.
+                if (!running) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         durationOptions.forEach { seconds ->
                             val selected = seconds == durationSeconds
