@@ -120,3 +120,16 @@ interaction path, screenshot) before being reported as done — a build+unit-tes
 shipped a real navigation regression before (see `docs/implementation_plan.md`). Unit tests
 (`OBDParsingTest`) cover parsing logic that's easy to break silently; run them after touching any
 `parse*` function in `BluetoothOBDManager`.
+
+**Root-causing from evidence (logs, a failing repro) should not stop at the first cause that
+matches the symptom.** Keep reading the rest of the same function/subsystem before fixing —
+especially concurrency and lifecycle code, where a matching explanation doesn't rule out a second,
+compounding bug nearby. On 2026-08-02 a real-world "won't connect with engine off" failure was
+root-caused from `diagnostic.log` to a secure-vs-insecure RFCOMM socket choice and fixed — correct,
+but a second bug in the same function (`connect()`/`initELM327()` racing itself via the
+`ACL_CONNECTED` receiver) was sitting right there and got fixed a day later, by a separate
+full-codebase review, not by re-reading the function that had just been open on screen. Likewise, a
+self-audit prompted by "what else is broken like this" should re-review the whole touched
+file/subsystem, not just grep for the exact pattern of the bug just fixed — a narrower sweep that
+session caught two more instances of one Compose perf pattern but missed unrelated bugs (DTC
+decode, fake read timeouts, ride finalization on grace timeout) sitting in files it never opened.
