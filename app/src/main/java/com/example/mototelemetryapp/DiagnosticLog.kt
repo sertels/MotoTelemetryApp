@@ -34,6 +34,16 @@ object DiagnosticLog {
             if (logFile != null) return
             val dir = File(context.applicationContext.filesDir, "diagnostics").apply { mkdirs() }
             logFile = File(dir, LOG_FILE_NAME)
+            // This file is in app-private storage and survives `adb install -r` / Play updates,
+            // so a single log can span several app versions with no other way to tell which
+            // entries came from which build - stamp one marker per process start.
+            val (versionName, versionCode) = try {
+                val info = context.packageManager.getPackageInfo(context.packageName, 0)
+                info.versionName to info.longVersionCode
+            } catch (_: Exception) {
+                "?" to -1L
+            }
+            append("I", "DiagnosticLog", "=== App started: v$versionName ($versionCode) ===", null)
         }
     }
 

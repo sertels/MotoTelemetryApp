@@ -17,11 +17,23 @@ object ObdSweepExport {
 
     private val fileTimestampFormat = SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.US)
 
+    // Prefixed onto every exported file so a capture pulled off the phone weeks later (e.g. into
+    // extra_info/) still says which app build produced it - the filename timestamp alone doesn't.
+    private fun versionHeader(context: Context): String {
+        val (versionName, versionCode) = try {
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            info.versionName to info.longVersionCode
+        } catch (_: Exception) {
+            "?" to -1L
+        }
+        return "# App v$versionName ($versionCode)\n"
+    }
+
     private fun save(context: Context, results: List<ObdSweepEntry>): File? {
         if (results.isEmpty()) return null
         val dir = File(context.applicationContext.filesDir, "diagnostics").apply { mkdirs() }
         val file = File(dir, "obd_sweep_${fileTimestampFormat.format(Date())}.txt")
-        file.writeText(results.joinToString("\n") { "${it.header}/${it.did}: ${it.response}" })
+        file.writeText(versionHeader(context) + results.joinToString("\n") { "${it.header}/${it.did}: ${it.response}" })
         return file
     }
 
@@ -37,7 +49,7 @@ object ObdSweepExport {
         if (frames.isEmpty()) return null
         val dir = File(context.applicationContext.filesDir, "diagnostics").apply { mkdirs() }
         val file = File(dir, "can_monitor_${fileTimestampFormat.format(Date())}.txt")
-        file.writeText(frames.joinToString("\n"))
+        file.writeText(versionHeader(context) + frames.joinToString("\n"))
         return file
     }
 
