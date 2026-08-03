@@ -11,6 +11,11 @@ request on the current connection actually matched what was expected, not just a
 
 **Headers used:** `7E0` = engine ECU (Bosch ME17.8.10), `7E1` = ABS/IMU module.
 
+**Reference vehicle** (via Mode 09, cross-checked with another OBD app — PID `0902`/`0904`): VIN
+`LLCVPX1A8RA150987`, calibration ID `8814LX28502BLXMT`. Worth checking against when
+cross-referencing another BMW F900-platform bike's CAN/DID data (e.g. the community CAN-ID
+spreadsheet) — different calibration revisions can shift layouts even on the same platform.
+
 ## Standard OBD-II (SAE J1979, Mode 01/03)
 
 These follow the standard and should work on most OBD-II-compliant vehicles, not just this one.
