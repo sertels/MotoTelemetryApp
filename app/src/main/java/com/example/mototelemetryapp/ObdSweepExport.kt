@@ -29,16 +29,23 @@ object ObdSweepExport {
         return "# App v$versionName ($versionCode)\n"
     }
 
-    private fun save(context: Context, results: List<ObdSweepEntry>): File? {
+    // kind distinguishes the three sweep entry points sharing this one dialog/export path
+    // (standard PID discovery, manufacturer DID sweep, the risky extended-session probe) -
+    // without it every exported file was named "obd_sweep_<timestamp>.txt" regardless of which
+    // one produced it, so two sweeps run minutes apart were indistinguishable once off the phone.
+    private fun save(context: Context, results: List<ObdSweepEntry>, kind: String): File? {
         if (results.isEmpty()) return null
         val dir = File(context.applicationContext.filesDir, "diagnostics").apply { mkdirs() }
-        val file = File(dir, "obd_sweep_${fileTimestampFormat.format(Date())}.txt")
-        file.writeText(versionHeader(context) + results.joinToString("\n") { "${it.header}/${it.did}: ${it.response}" })
+        val file = File(dir, "obd_sweep_${kind}_${fileTimestampFormat.format(Date())}.txt")
+        file.writeText(
+            versionHeader(context) + "# Sweep type: $kind\n" +
+                results.joinToString("\n") { "${it.header}/${it.did}: ${it.response}" }
+        )
         return file
     }
 
-    fun shareIntent(context: Context, results: List<ObdSweepEntry>): Intent? {
-        val file = save(context, results) ?: return null
+    fun shareIntent(context: Context, results: List<ObdSweepEntry>, kind: String): Intent? {
+        val file = save(context, results, kind) ?: return null
         return shareFile(context, file)
     }
 

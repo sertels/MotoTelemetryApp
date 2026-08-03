@@ -256,6 +256,7 @@ fun BikeInfoScreen(
             hint = stringResource(R.string.bike_info_standard_sweep_hint),
             running = obdSweepRunning,
             results = obdSweepResults,
+            kind = "standard_pid",
             progress = obdSweepProgress,
             onRunSweep = onRunStandardPidSweep,
             onCancelSweep = onCancelObdSweep
@@ -266,6 +267,7 @@ fun BikeInfoScreen(
             hint = stringResource(R.string.bike_info_sweep_hint),
             running = obdSweepRunning,
             results = obdSweepResults,
+            kind = "manufacturer_did",
             progress = obdSweepProgress,
             onRunSweep = onRunObdSweep,
             onCancelSweep = onCancelObdSweep
@@ -535,6 +537,7 @@ private fun SweepCta(
     hint: String,
     running: Boolean,
     results: List<ObdSweepEntry>,
+    kind: String,
     progress: Pair<Int, Int> = 0 to 0,
     onRunSweep: () -> Unit,
     onCancelSweep: () -> Unit = {}
@@ -575,6 +578,7 @@ private fun SweepCta(
         ObdSweepDialog(
             running = running,
             results = results,
+            kind = kind,
             progress = progress,
             onCancel = onCancelSweep,
             onDismiss = { showSweepDialog = false }
@@ -661,6 +665,7 @@ private fun RiskySessionCta(
         ObdSweepDialog(
             running = running,
             results = results,
+            kind = "extended_session_probe",
             progress = progress,
             onCancel = onCancel,
             onDismiss = { showResultDialog = false }

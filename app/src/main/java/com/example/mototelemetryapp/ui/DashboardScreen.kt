@@ -302,6 +302,7 @@ fun ObdStatusBadge(
 fun ObdSweepDialog(
     running: Boolean,
     results: List<ObdSweepEntry>,
+    kind: String,
     progress: Pair<Int, Int> = 0 to 0,
     onCancel: () -> Unit = {},
     onDismiss: () -> Unit
@@ -321,7 +322,7 @@ fun ObdSweepDialog(
             if (!running && results.isNotEmpty()) {
                 val shareChooserTitle = stringResource(R.string.share_obd_sweep)
                 androidx.compose.material3.TextButton(onClick = {
-                    val intent = ObdSweepExport.shareIntent(context, results)
+                    val intent = ObdSweepExport.shareIntent(context, results, kind)
                     if (intent != null) {
                         context.startActivity(android.content.Intent.createChooser(intent, shareChooserTitle))
                     }
