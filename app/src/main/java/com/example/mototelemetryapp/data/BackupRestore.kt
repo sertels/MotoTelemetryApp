@@ -61,6 +61,9 @@ suspend fun restoreFromBackupFile(context: Context, backupFile: File, mode: Rest
         }
     }
 
+// Only the columns every schema version ever had (identity + time) are read strictly; every
+// other column tolerates being absent, so restoring a backup taken on an older schema degrades
+// to defaults for the missing fields instead of failing the entire restore over one column.
 private fun readSessions(db: SQLiteDatabase): Map<Long, Session> {
     val sessions = mutableMapOf<Long, Session>()
     db.rawQuery("SELECT * FROM sessions", null).use { cursor ->
@@ -70,19 +73,19 @@ private fun readSessions(db: SQLiteDatabase): Map<Long, Session> {
                 id = id,
                 name = cursor.getString("name"),
                 startTime = cursor.getLong("startTime"),
-                endTime = if (cursor.isNull(cursor.getColumnIndexOrThrow("endTime"))) null else cursor.getLong("endTime"),
-                totalDistanceBikeKm = cursor.getFloat("totalDistanceBikeKm"),
-                totalDistanceGpsKm = cursor.getFloat("totalDistanceGpsKm"),
-                maxSpeed = cursor.getInt("maxSpeed"),
-                maxLeanLeft = cursor.getFloat("maxLeanLeft"),
-                maxLeanRight = cursor.getFloat("maxLeanRight"),
-                maxCoolantTemp = cursor.getInt("maxCoolantTemp"),
+                endTime = cursor.getNullableLongOrDefault("endTime", null),
+                totalDistanceBikeKm = cursor.getFloatOrDefault("totalDistanceBikeKm", 0f),
+                totalDistanceGpsKm = cursor.getFloatOrDefault("totalDistanceGpsKm", 0f),
+                maxSpeed = cursor.getIntOrDefault("maxSpeed", 0),
+                maxLeanLeft = cursor.getFloatOrDefault("maxLeanLeft", 0f),
+                maxLeanRight = cursor.getFloatOrDefault("maxLeanRight", 0f),
+                maxCoolantTemp = cursor.getIntOrDefault("maxCoolantTemp", 0),
                 maxGForceLat = cursor.getFloatOrDefault("maxGForceLat", 0f),
                 maxGForceLon = cursor.getFloatOrDefault("maxGForceLon", 0f),
-                startOdometer = cursor.getLong("startOdometer"),
-                endOdometer = cursor.getLong("endOdometer"),
-                totalFuelLiters = cursor.getFloat("totalFuelLiters"),
-                avgFuelConsumption = cursor.getFloat("avgFuelConsumption")
+                startOdometer = cursor.getLongOrDefault("startOdometer", 0L),
+                endOdometer = cursor.getLongOrDefault("endOdometer", 0L),
+                totalFuelLiters = cursor.getFloatOrDefault("totalFuelLiters", 0f),
+                avgFuelConsumption = cursor.getFloatOrDefault("avgFuelConsumption", 0f)
             )
         }
     }
@@ -97,22 +100,22 @@ private fun readRecordsBySessionId(db: SQLiteDatabase): Map<Long, List<Telemetry
             val record = TelemetryRecord(
                 sessionId = sessionId,
                 timestamp = cursor.getLong("timestamp"),
-                speed = cursor.getInt("speed"),
-                rpm = cursor.getInt("rpm"),
-                gear = cursor.getInt("gear"),
-                throttle = cursor.getInt("throttle"),
-                brakeFront = cursor.getInt("brakeFront"),
-                brakeRear = cursor.getInt("brakeRear"),
-                leanAnglePhone = cursor.getFloat("leanAnglePhone"),
-                leanAngleBike = cursor.getFloat("leanAngleBike"),
-                gForceLat = cursor.getFloat("gForceLat"),
-                gForceLon = cursor.getFloat("gForceLon"),
-                fuelRate = cursor.getFloat("fuelRate"),
-                fuelLevel = cursor.getInt("fuelLevel"),
-                coolantTemp = cursor.getInt("coolantTemp"),
-                altitude = cursor.getDouble("altitude"),
-                latitude = cursor.getDouble("latitude"),
-                longitude = cursor.getDouble("longitude")
+                speed = cursor.getIntOrDefault("speed", 0),
+                rpm = cursor.getIntOrDefault("rpm", 0),
+                gear = cursor.getIntOrDefault("gear", 0),
+                throttle = cursor.getIntOrDefault("throttle", 0),
+                brakeFront = cursor.getIntOrDefault("brakeFront", 0),
+                brakeRear = cursor.getIntOrDefault("brakeRear", 0),
+                leanAnglePhone = cursor.getFloatOrDefault("leanAnglePhone", 0f),
+                leanAngleBike = cursor.getFloatOrDefault("leanAngleBike", 0f),
+                gForceLat = cursor.getFloatOrDefault("gForceLat", 0f),
+                gForceLon = cursor.getFloatOrDefault("gForceLon", 0f),
+                fuelRate = cursor.getFloatOrDefault("fuelRate", 0f),
+                fuelLevel = cursor.getIntOrDefault("fuelLevel", 0),
+                coolantTemp = cursor.getIntOrDefault("coolantTemp", 0),
+                altitude = cursor.getDoubleOrDefault("altitude", 0.0),
+                latitude = cursor.getDoubleOrDefault("latitude", 0.0),
+                longitude = cursor.getDoubleOrDefault("longitude", 0.0)
             )
             records.getOrPut(sessionId) { mutableListOf() }.add(record)
         }
@@ -121,14 +124,33 @@ private fun readRecordsBySessionId(db: SQLiteDatabase): Map<Long, List<Telemetry
 }
 
 private fun Cursor.getLong(column: String) = getLong(getColumnIndexOrThrow(column))
-private fun Cursor.getInt(column: String) = getInt(getColumnIndexOrThrow(column))
-private fun Cursor.getFloat(column: String) = getFloat(getColumnIndexOrThrow(column))
-private fun Cursor.getDouble(column: String) = getDouble(getColumnIndexOrThrow(column))
 private fun Cursor.getString(column: String): String = getString(getColumnIndexOrThrow(column))
 
 // For columns added after older backups were already taken - getColumnIndexOrThrow would fail
-// the whole restore over one missing column, so this falls back to a default instead.
+// the whole restore over one missing column, so these fall back to a default instead.
 private fun Cursor.getFloatOrDefault(column: String, default: Float): Float {
     val index = getColumnIndex(column)
     return if (index == -1) default else getFloat(index)
+}
+
+private fun Cursor.getIntOrDefault(column: String, default: Int): Int {
+    val index = getColumnIndex(column)
+    return if (index == -1) default else getInt(index)
+}
+
+private fun Cursor.getLongOrDefault(column: String, default: Long): Long {
+    val index = getColumnIndex(column)
+    return if (index == -1) default else getLong(index)
+}
+
+private fun Cursor.getDoubleOrDefault(column: String, default: Double): Double {
+    val index = getColumnIndex(column)
+    return if (index == -1) default else getDouble(index)
+}
+
+// endTime is genuinely nullable in the schema (an unfinalized ride), distinct from the
+// column merely being absent in an old backup - both degrade to the default here.
+private fun Cursor.getNullableLongOrDefault(column: String, default: Long?): Long? {
+    val index = getColumnIndex(column)
+    return if (index == -1 || isNull(index)) default else getLong(index)
 }

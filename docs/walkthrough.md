@@ -30,10 +30,22 @@ architectural patterns behind these.
   `consecutiveWriteFailures` counter now trips `disconnect()` after 8 failures in a row (roughly
   one `pollOnce()` cycle), since a *write* failure (unlike a read timeout) only happens when the
   RFCOMM link itself is broken.
+- **Serial-read discipline:** `readResponse()` enforces its 2s timeout by polling
+  `InputStream.available()` with a short `delay()` between polls — a blocking `read()` can *not*
+  be timeboxed by `withTimeoutOrNull` (cancellation is only observed once the read returns on its
+  own), which used to mean a genuinely silent link hung the poll loop until a byte arrived.
+  `sendCommand()` also drains any bytes still buffered from a previously timed-out command before
+  writing, so a late-arriving response can't be attributed to the wrong request. The CAN monitor's
+  capture loop uses the same `available()`-based pattern for its deadline. Connections are
+  serialized through a dedicated `connectMutex` (our own fresh RFCOMM connect raises
+  `ACL_CONNECTED`, whose receiver used to fire a second, racing `connect()`), and `initELM327()`
+  verifies the `ATZ` banner actually says `ELM327` before declaring the link up — a dead or
+  foreign SPP device no longer gets a "Connected" badge over a poll loop full of zeros.
 - **Check-engine diagnostics:** polls Mode 01 PID 01 (MIL status + DTC count) every ~5s, fetches
-  Mode 03 (stored codes) only when there's something to fetch, decodes per SAE J2012, and supports
-  clearing via Mode 04 (`clearDtcs()`), gated behind a confirmation dialog since it resets ECU
-  readiness monitors.
+  Mode 03 (stored codes) only when there's something to fetch, decodes per SAE J2012 (skipping the
+  leading DTC-count byte the CAN response carries, and reassembling ISO-TP multi-frame replies for
+  3+ codes), and supports clearing via Mode 04 (`clearDtcs()`), gated behind a confirmation dialog
+  since it resets ECU readiness monitors.
 - **Diagnostic sweep tools**, all serialized through one `Mutex` so they can't interleave with the
   regular polling loop on the same serial socket:
   - `sweepStandardPidSupport()` — safe, standard Mode 01 PID 00/20/40… bitmask discovery.
@@ -67,7 +79,17 @@ architectural patterns behind these.
   `TelemetryService` also registers a dynamic receiver for `ACL_CONNECTED`/`ACL_DISCONNECTED` on
   that device: on disconnect it drops the OBD link and starts a grace-period timer (configurable in
   Settings, default 10 min); reconnecting before it expires resumes into the *same* session,
-  otherwise the ride is finalized.
+  otherwise the ride is finalized. Finalization on grace timeout happens explicitly
+  (`finalizeSession()` + `stopForeground` + `stopSelf`), **not** by relying on `onDestroy()` — a
+  started-and-bound service isn't destroyed by `stopSelf()` while the UI still holds its binding,
+  which used to leave the ride recording phone-sensor records until the user happened to leave the
+  app. `onDestroy()` keeps a no-op-if-already-finalized fallback for the explicit Stop path.
+- **Ride aggregates:** fuel consumption integrates the rate over the *measured* interval between
+  loop iterations (capped at 5s so a stall can't over-count), not a hard-coded 0.2s; the ride's
+  `startOdometer` is captured from the first non-zero ODOMETER reading of the ride (reading it at
+  connect time always got 0, which would have turned `endOdometer - startOdometer` into the bike's
+  absolute odometer the day that DID starts answering); `startOdometer`/`endOdometer` and
+  `avgFuelConsumption` (L/100km over GPS distance) are now written onto the finalized session.
 - Room DB uses `fallbackToDestructiveMigration()` (dev-only) with a safety net that snapshots the
   raw DB file before a version-bump wipe.
 
@@ -102,7 +124,9 @@ architectural patterns behind these.
   ride doesn't miss writes still sitting in `-wal`.
 - Restore lists backups from the Drive `appDataFolder`, lets the user pick one plus a Replace/Merge
   choice, downloads it, and imports it via raw SQLite reads (`data/BackupRestore.kt`) — Merge skips
-  sessions whose `startTime` already exists locally, Replace wipes local data first.
+  sessions whose `startTime` already exists locally, Replace wipes local data first. Only identity
+  and time columns are read strictly; every other column falls back to a default when absent, so a
+  backup taken on an older schema restores with degraded fields instead of failing outright.
 - Requires a Web-application OAuth client (not the Android client) as the `setServerClientId(...)`
   token audience, and every signing-in account added under Audience → Test users while the consent
   screen is in Testing status — see `README.md` setup steps.

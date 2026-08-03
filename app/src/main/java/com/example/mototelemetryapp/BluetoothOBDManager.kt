@@ -17,7 +17,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 import java.io.IOException
@@ -76,6 +75,12 @@ class BluetoothOBDManager(
     // Serializes every request/response round trip so the debug sweep can't interleave
     // its own ATSH/DID commands with the regular polling loop on the same serial socket.
     private val ioMutex = Mutex()
+
+    // Serializes connect() itself. Two callers can race into it - e.g. our own fresh RFCOMM
+    // connect raises ACTION_ACL_CONNECTED, whose receiver (TelemetryService.onObdLinkRestored)
+    // fires connect() again while the first one is still mid-handshake - and without this the
+    // second call's closeSocketQuietly() tears down the socket the first call just opened.
+    private val connectMutex = Mutex()
 
     private val _sweepRunning = MutableStateFlow(false)
     override val sweepRunning = _sweepRunning.asStateFlow()
@@ -150,12 +155,24 @@ class BluetoothOBDManager(
 
     // Connects to the explicitly chosen device and remembers it for future rides.
     override suspend fun connectToDevice(address: String): Boolean {
+        // An explicit user pick must always win: tear down any existing connection first,
+        // otherwise connect()'s already-connected fast path would silently ignore the new
+        // device choice.
+        if (_isConnected.value) disconnect()
         setPreferredDevice(address)
         return connect()
     }
 
     @SuppressLint("MissingPermission")
-    override suspend fun connect(): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun connect(): Boolean = connectMutex.withLock {
+        // A caller that raced in behind a successful connect (see connectMutex) just wants a
+        // working link - it must not rebuild the one that now exists.
+        if (_isConnected.value) return@withLock true
+        connectLocked()
+    }
+
+    @SuppressLint("MissingPermission")
+    private suspend fun connectLocked(): Boolean = withContext(Dispatchers.IO) {
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val adapter = bluetoothManager.adapter
 
@@ -250,8 +267,20 @@ class BluetoothOBDManager(
     }
 
     private suspend fun initELM327(): Boolean {
-        val commands = listOf("ATZ", "ATE0", "ATL0", "ATSP0")
-        for (cmd in commands) {
+        // ATZ resets the adapter; clones can take close to a full second to come back up, and
+        // its banner ("ELM327 v1.5" etc.) is the only handshake-level proof we're talking to an
+        // ELM327-compatible adapter at all. Before this check, init unconditionally returned
+        // true - a dead or foreign SPP device still got a "Connected" badge and a poll loop
+        // full of zeros.
+        sendCommand("ATZ")
+        delay(1000.milliseconds)
+        val atzResponse = readResponse()
+        Log.d(tag, "Command: ATZ, Response: $atzResponse")
+        if (!atzResponse.contains("ELM327", ignoreCase = true)) {
+            DiagnosticLog.e(tag, "Adaptör ELM327 olarak doğrulanamadı: \"$atzResponse\"")
+            return false
+        }
+        for (cmd in listOf("ATE0", "ATL0", "ATSP0")) {
             sendCommand(cmd)
             val response = readResponse()
             Log.d(tag, "Command: $cmd, Response: $response")
@@ -262,6 +291,14 @@ class BluetoothOBDManager(
 
     private fun sendCommand(cmd: String) {
         try {
+            // A previously timed-out command's response can still arrive after readResponse()
+            // gave up on it - discard anything already buffered so those late bytes can't get
+            // attributed to *this* command's response (the prefix matching in the parsers
+            // mostly masked that as a spurious 0 reading rather than a crash).
+            inputStream?.let { stream ->
+                val stale = stream.available()
+                if (stale > 0) stream.skip(stale.toLong())
+            }
             outputStream?.write((cmd + "\r").toByteArray())
             outputStream?.flush()
             consecutiveWriteFailures = 0
@@ -309,7 +346,7 @@ class BluetoothOBDManager(
                     delay(100.milliseconds)
                     try {
                         val drain = ByteArray(256)
-                        inputStream?.read(drain)
+                        if ((inputStream?.available() ?: 0) > 0) inputStream?.read(drain)
                     } catch (_: IOException) {
                     }
 
@@ -325,17 +362,22 @@ class BluetoothOBDManager(
                     val buffer = ByteArray(1024)
                     val lineBuilder = StringBuilder()
                     while (System.currentTimeMillis() < deadline) {
-                        // read() blocks with no built-in timeout (same caveat as readResponse()),
-                        // and on a quiet bus (e.g. ignition on/engine off, few modules broadcasting)
-                        // ATMA can go tens of seconds without producing a single byte - without this
-                        // timeout the loop never gets to re-check the deadline, so an 8s capture
-                        // silently ran 90+ seconds and killed the Bluetooth socket on a real test,
-                        // 2026-08-01. withTimeoutOrNull can't actually interrupt the blocked read
-                        // call underneath, but it does let this loop stop waiting on it and finish
-                        // on time; the abandoned read is harmless since the socket gets closed by
-                        // the stop-monitor sequence right after anyway.
+                        // read() blocks with no built-in timeout and can't be timeboxed by
+                        // withTimeoutOrNull either (cancellation is only observed once read()
+                        // returns on its own) - on a quiet bus (e.g. ignition on/engine off, few
+                        // modules broadcasting) ATMA can go tens of seconds without producing a
+                        // single byte, so a blocking read never got to re-check the deadline: an
+                        // 8s capture silently ran 90+ seconds and killed the Bluetooth socket on
+                        // a real test, 2026-08-01. Polling available() never blocks, and the
+                        // delay() between polls is a real suspension point, so the deadline (and
+                        // cancellation) actually hold here.
                         val bytes = try {
-                            withTimeoutOrNull(500.milliseconds) { inputStream?.read(buffer) } ?: continue
+                            val available = inputStream?.available() ?: 0
+                            if (available == 0) {
+                                delay(20.milliseconds)
+                                continue
+                            }
+                            inputStream?.read(buffer, 0, minOf(buffer.size, available)) ?: -1
                         } catch (_: IOException) {
                             break
                         }
@@ -385,12 +427,9 @@ class BluetoothOBDManager(
                     }
                     delay(200.milliseconds)
                     try {
-                        withTimeoutOrNull(500.milliseconds) {
-                            val drain = ByteArray(256)
-                            while (true) {
-                                val n = inputStream?.read(drain) ?: break
-                                if (n <= 0) break
-                            }
+                        val drain = ByteArray(256)
+                        while ((inputStream?.available() ?: 0) > 0) {
+                            if ((inputStream?.read(drain) ?: -1) == -1) break
                         }
                     } catch (_: IOException) {
                     }
@@ -404,7 +443,7 @@ class BluetoothOBDManager(
                     delay(100.milliseconds)
                     try {
                         val drain2 = ByteArray(256)
-                        inputStream?.read(drain2)
+                        if ((inputStream?.available() ?: 0) > 0) inputStream?.read(drain2)
                     } catch (_: IOException) {
                     }
                 }
@@ -422,18 +461,31 @@ class BluetoothOBDManager(
         val buffer = ByteArray(1024)
         val response = StringBuilder()
         try {
-            // inputStream.read() blocks with no socket-level timeout, so an ECU that never
-            // answers (e.g. an unconfirmed sweep header) would otherwise hang this call
-            // forever instead of the intended 2s - withTimeoutOrNull enforces it for real.
-            withTimeoutOrNull(2000.milliseconds) {
-                while (true) {
-                    val bytes = inputStream?.read(buffer) ?: -1
+            // A blocking inputStream.read() can NOT be bounded by withTimeoutOrNull - the
+            // coroutine's cancellation is only observed once read() returns on its own, so on a
+            // genuinely silent link the previous implementation hung until the first byte
+            // arrived or the socket died, 2s "timeout" notwithstanding. Polling available()
+            // never blocks, and the delay() between polls is a real suspension point, so this
+            // deadline actually holds.
+            val stream = inputStream ?: return ""
+            val deadline = System.currentTimeMillis() + READ_RESPONSE_TIMEOUT_MS
+            var prompted = false
+            while (System.currentTimeMillis() < deadline) {
+                val available = stream.available()
+                if (available > 0) {
+                    val bytes = stream.read(buffer, 0, minOf(buffer.size, available))
                     if (bytes == -1) break
                     val part = String(buffer, 0, bytes)
                     response.append(part)
-                    if (part.contains(">")) break
+                    if (part.contains(">")) {
+                        prompted = true
+                        break
+                    }
+                } else {
+                    delay(10.milliseconds)
                 }
-            } ?: DiagnosticLog.w(tag, "Read response timeout")
+            }
+            if (!prompted) DiagnosticLog.w(tag, "Read response timeout")
         } catch (e: IOException) {
             DiagnosticLog.e(tag, "Okuma hatası: ${e.message}")
         }
@@ -1238,15 +1290,39 @@ class BluetoothOBDManager(
         }
     }
 
-    // 43 AABB CCDD ... -> each 2-byte pair is one DTC, encoded per SAE J2012: top 2 bits of the
-    // first byte select the letter (P/C/B/U), remaining bits form the 4-digit code.
+    // On CAN (this bike: ISO 15765 via 7E0) the positive mode 03 response is
+    // "43 <count> AABB CCDD ..." - the first data byte is the number of stored DTCs, NOT part
+    // of the first code. Skipping it matters: with one stored P0123 the response is
+    // "43 01 01 23", and chunking straight after "43" used to decode that as P0101 - every
+    // reported code was shifted/garbled this way. Each following 2-byte pair is one DTC per
+    // SAE J2012: top 2 bits of the first byte select the letter (P/C/B/U), remaining bits form
+    // the 4-digit code.
+    //
+    // 3+ DTCs no longer fit one CAN frame, so the ELM327 renders the ISO-TP multi-frame reply
+    // as a 3-hex-digit total-length line followed by "0:"/"1:"-indexed data lines - those frame
+    // markers are stripped here before decoding.
     internal fun parseDtcCodes(response: String): List<String> {
         return try {
-            val clean = response.replace(" ", "")
-            if (!clean.contains("43")) return emptyList()
-            val bytes = clean.substringAfter("43")
-            bytes.chunked(4)
-                .filter { it.length == 4 && it != "0000" }
+            val hex = response.uppercase()
+                .split('\r', '\n')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .joinToString("") { line ->
+                    // Drop the "N:" ISO-TP frame index if present; single-frame lines pass through.
+                    line.substringAfter(':', line).replace(" ", "")
+                }
+            val idx = hex.indexOf("43")
+            if (idx == -1) return emptyList()
+            val payload = hex.substring(idx + 2)
+            if (payload.length < 2) return emptyList()
+            val count = payload.take(2).toIntOrNull(16) ?: return emptyList()
+            if (count <= 0) return emptyList()
+            payload.drop(2)
+                .chunked(4)
+                .take(count)
+                .filter { chunk ->
+                    chunk.length == 4 && chunk != "0000" && chunk.all { it.isDigit() || it in 'A'..'F' }
+                }
                 .map { decodeDtc(it) }
         } catch (_: Exception) {
             emptyList()
@@ -1309,7 +1385,11 @@ class BluetoothOBDManager(
     companion object {
         private const val PREFS_NAME = "obd_prefs"
         private const val KEY_DEVICE_ADDRESS = "device_address"
-        private const val DTC_POLL_INTERVAL_TICKS = 50 // ~5s at the 100ms data-loop cadence
+        // 50 hot-loop cycles. Note each cycle is dominated by ~15 serial round trips (tens of ms
+        // each), not the nominal 100ms delay - so in practice this lands around every 30-60s,
+        // which is still plenty for values like DTCs and fuel trims.
+        private const val DTC_POLL_INTERVAL_TICKS = 50
+        private const val READ_RESPONSE_TIMEOUT_MS = 2000L
         private const val CONNECT_MAX_ATTEMPTS = 4
         private const val CONNECT_RETRY_DELAY_MS = 1200L
         // Each pollOnce() cycle makes 11 sendCommand() calls, so this trips within roughly one

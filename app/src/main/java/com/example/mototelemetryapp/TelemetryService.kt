@@ -34,6 +34,9 @@ import kotlin.time.Duration.Companion.minutes
 // Fixes below which GPS jitter (rather than real movement) dominates distanceTo() deltas.
 private const val MAX_GPS_ACCURACY_METERS = 20f
 private const val MIN_MOVING_SPEED_MPS = 1f // ~3.6 km/h
+// Fuel is integrated over measured wall-clock intervals; anything beyond this cap means the
+// loop was stalled (OS freeze, grace gap), not that fuel burned at the last rate the whole time.
+private const val MAX_FUEL_INTEGRATION_INTERVAL_SEC = 5f
 
 class TelemetryService : Service() {
 
@@ -50,6 +53,10 @@ class TelemetryService : Service() {
     private var lastLocation: Location? = null
     private var currentSessionId: Long = -1
     private var totalGpsDistanceMeters: Float = 0f
+    // Captured lazily from the first non-zero ODOMETER reading of the ride (see the telemetry
+    // loop) - reading it right after connect() returned always got 0 because the first poll
+    // cycle hadn't run yet, which would have turned endOdometer - startOdometer into the
+    // bike's absolute odometer value the day the odometer DID actually starts answering.
     private var startOdometer: Long = 0
     private var maxSpeed: Int = 0
     // StateFlows (not plain vars) so the lean gauge can show "max this ride" live rather than
@@ -77,6 +84,13 @@ class TelemetryService : Service() {
     private val _maxGForceLon = MutableStateFlow(0f)
     val maxGForceLon = _maxGForceLon.asStateFlow()
     private var totalFuelConsumedLiters: Float = 0f
+    // Wall clock of the previous telemetry-loop iteration, so fuel integration uses the real
+    // elapsed interval - the loop's nominal 200ms cadence drifts with OBD round-trip time and
+    // DB insert cost, and a hard-coded 0.2s quietly under-counted by that drift.
+    private var lastFuelIntegrationMillis = 0L
+    // The coroutine actually recording the ride, so ending a ride (grace timeout) can stop it
+    // without cancelling the whole serviceScope.
+    private var telemetryJob: Job? = null
     // A StateFlow (not a plain read-once Boolean) so DashboardViewModel can observe it directly
     // instead of racing: onStartCommand() and bindService()'s onServiceConnected() are both
     // dispatched asynchronously with no ordering guarantee between them, so a one-time read at
@@ -233,8 +247,25 @@ class TelemetryService : Service() {
         graceTimeoutJob = serviceScope.launch {
             delay(graceMinutes.minutes)
             Log.d("TelemetryService", "OBD link not restored within grace period; ending ride.")
-            stopSelf()
+            endRideAfterGrace()
         }
+    }
+
+    // stopSelf() alone was NOT enough here: while the UI holds a binding (it only unbinds in
+    // the Activity's onDestroy), a started-and-bound service isn't destroyed by stopSelf(), so
+    // onDestroy() - the only place the session used to be finalized - never ran. The ride kept
+    // recording phone-sensor records and inflating its duration until the user happened to
+    // leave the app. Finalizing explicitly here makes the grace timeout actually end the ride;
+    // the service itself may legitimately live on in bind-only mode afterwards.
+    private suspend fun endRideAfterGrace() {
+        _trackingStarted.value = false
+        telemetryJob?.cancel()
+        telemetryJob = null
+        orientationManager?.stop()
+        locationSource?.stop()
+        finalizeSession()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     // Engine restarted. If this is within the grace window, currentSessionId is untouched so
@@ -242,6 +273,9 @@ class TelemetryService : Service() {
     private fun onObdLinkRestored() {
         graceTimeoutJob?.cancel()
         graceTimeoutJob = null
+        // Already connected means this broadcast was raised by our own just-established RFCOMM
+        // link (connecting creates the ACL link too) - nothing to restore.
+        if (bluetoothOBDManager?.isConnected?.value == true) return
         serviceScope.launch { bluetoothOBDManager?.connect() }
     }
 
@@ -291,7 +325,7 @@ class TelemetryService : Service() {
     }
 
     private fun startTelemetryTracking() {
-        serviceScope.launch {
+        telemetryJob = serviceScope.launch {
             try {
                 val database = db ?: run {
                     DiagnosticLog.e("TelemetryService", "Database not initialized")
@@ -325,6 +359,8 @@ class TelemetryService : Service() {
                 _maxGForceLat.value = 0f
                 _maxGForceLon.value = 0f
                 totalFuelConsumedLiters = 0f
+                lastFuelIntegrationMillis = 0L
+                startOdometer = 0
                 lastLocation = null
 
                 // 1. Create a new Session
@@ -338,15 +374,18 @@ class TelemetryService : Service() {
 
                 // 2. Start OBD2 Connection (best-effort; phone sensors keep streaming even if this fails)
                 val connected = obdManager.connect()
-                if (connected) {
-                    startOdometer = (obdManager.obdData.value["ODOMETER"] ?: 0).toLong()
-                } else {
+                if (!connected) {
                     DiagnosticLog.e("TelemetryService", "OBD2 connection failed; continuing with phone sensors only.")
                 }
 
                 while (isActive) {
                     try {
                         val obdData = obdManager.obdData.value
+
+                        // First real odometer reading of the ride becomes the start value - see
+                        // the startOdometer declaration for why it can't be read at connect time.
+                        val odometerNow = (obdData["ODOMETER"] ?: 0).toLong()
+                        if (startOdometer == 0L && odometerNow > 0L) startOdometer = odometerNow
                         val leanPhone = orientManager.leanAngle.value
                         val leanBike = (obdData["LEAN_BIKE"] ?: 0).toFloat()
                         val coolant = obdData["COOLANT"] ?: 0
@@ -380,8 +419,17 @@ class TelemetryService : Service() {
                         _maxGForceLat.value = max(_maxGForceLat.value, abs(orientManager.gForceLat.value))
                         _maxGForceLon.value = max(_maxGForceLon.value, abs(orientManager.gForceLon.value))
 
-                        // Integrate fuel consumption (Rate is Liters/Hour, interval is 0.2s)
-                        totalFuelConsumedLiters += (fuelRate / 3600f) * 0.2f
+                        // Integrate fuel consumption (rate is liters/hour) over the *measured*
+                        // interval since the previous iteration. Capped so a long stall (e.g.
+                        // process frozen by the OS) can't integrate one rate over minutes.
+                        val nowMillis = System.currentTimeMillis()
+                        val fuelIntervalSeconds = if (lastFuelIntegrationMillis == 0L) {
+                            0.2f
+                        } else {
+                            ((nowMillis - lastFuelIntegrationMillis) / 1000f).coerceIn(0f, MAX_FUEL_INTEGRATION_INTERVAL_SEC)
+                        }
+                        lastFuelIntegrationMillis = nowMillis
+                        totalFuelConsumedLiters += (fuelRate / 3600f) * fuelIntervalSeconds
 
                         val record = TelemetryRecord(
                             sessionId = currentSessionId,
@@ -435,6 +483,7 @@ class TelemetryService : Service() {
             var recoveredMaxGForceLat = 0f
             var recoveredMaxGForceLon = 0f
             var recoveredFuelLiters = 0f
+            var prevTimestamp = 0L
 
             for (r in records) {
                 recoveredMaxSpeed = max(recoveredMaxSpeed, r.speed)
@@ -446,7 +495,15 @@ class TelemetryService : Service() {
                 }
                 recoveredMaxGForceLat = max(recoveredMaxGForceLat, abs(r.gForceLat))
                 recoveredMaxGForceLon = max(recoveredMaxGForceLon, abs(r.gForceLon))
-                recoveredFuelLiters += (r.fuelRate / 3600f) * 0.2f
+                // Real per-record interval, same as the live loop; capped so a recording gap
+                // doesn't integrate one fuel rate across it.
+                val intervalSeconds = if (prevTimestamp == 0L) {
+                    0.2f
+                } else {
+                    ((r.timestamp - prevTimestamp) / 1000f).coerceIn(0f, MAX_FUEL_INTEGRATION_INTERVAL_SEC)
+                }
+                prevTimestamp = r.timestamp
+                recoveredFuelLiters += (r.fuelRate / 3600f) * intervalSeconds
 
                 if (r.latitude != 0.0 || r.longitude != 0.0) {
                     val loc = Location("recovery").apply {
@@ -474,6 +531,47 @@ class TelemetryService : Service() {
         }
     }
 
+    // Writes the final aggregates onto the session row and marks the ride ended. Clears
+    // currentSessionId first, so the grace-timeout path and onDestroy can both call this
+    // without double-finalizing the same session.
+    private suspend fun finalizeSession() {
+        val database = db ?: return
+        val sessionId = currentSessionId
+        if (sessionId == -1L) return
+        currentSessionId = -1
+
+        val endOdometer = (bluetoothOBDManager?.obdData?.value?.get("ODOMETER") ?: 0).toLong()
+        val distanceGpsKm = totalGpsDistanceMeters / 1000f
+        try {
+            val finalSession = database.telemetryDao().getSessionById(sessionId)?.copy(
+                endTime = System.currentTimeMillis(),
+                totalDistanceGpsKm = distanceGpsKm,
+                // Only meaningful when a real start reading was ever captured - without the
+                // startOdometer > 0 guard this would become the bike's absolute odometer.
+                totalDistanceBikeKm = if (startOdometer > 0 && endOdometer > startOdometer) (endOdometer - startOdometer).toFloat() else 0f,
+                maxSpeed = maxSpeed,
+                maxLeanLeft = _maxLeanLeft.value,
+                maxLeanRight = _maxLeanRight.value,
+                maxCoolantTemp = maxCoolantTemp,
+                maxGForceLat = _maxGForceLat.value,
+                maxGForceLon = _maxGForceLon.value,
+                totalFuelLiters = totalFuelConsumedLiters,
+                startOdometer = startOdometer,
+                endOdometer = endOdometer,
+                // L/100km over the GPS distance (the reliably-populated one); 0 when either
+                // input is too small to be meaningful.
+                avgFuelConsumption = if (distanceGpsKm > 1f && totalFuelConsumedLiters > 0f) {
+                    totalFuelConsumedLiters / distanceGpsKm * 100f
+                } else 0f
+            )
+            finalSession?.let {
+                database.telemetryDao().updateSession(it)
+            }
+        } catch (e: Exception) {
+            DiagnosticLog.e("TelemetryService", "Error updating session: ${e.message}", e)
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
 
@@ -486,38 +584,11 @@ class TelemetryService : Service() {
             }
         }
 
-        // Save final session data synchronously
+        // Save final session data synchronously - no-ops if the grace-timeout path already
+        // finalized this ride.
         try {
-            val database = db
-            val obdManager = bluetoothOBDManager
-            
-            if (database != null && currentSessionId != -1L) {
-                val endOdometer = (obdManager?.obdData?.value?.get("ODOMETER") ?: startOdometer.toInt()).toLong()
-                
-                runBlocking {
-                    try {
-                        val finalSession = database.telemetryDao().getSessionById(currentSessionId)?.copy(
-                            endTime = System.currentTimeMillis(),
-                            totalDistanceGpsKm = totalGpsDistanceMeters / 1000f,
-                            totalDistanceBikeKm = if (endOdometer > startOdometer) (endOdometer - startOdometer).toFloat() else 0f,
-                            maxSpeed = maxSpeed,
-                            maxLeanLeft = _maxLeanLeft.value,
-                            maxLeanRight = _maxLeanRight.value,
-                            maxCoolantTemp = maxCoolantTemp,
-                            maxGForceLat = _maxGForceLat.value,
-                            maxGForceLon = _maxGForceLon.value,
-                            totalFuelLiters = totalFuelConsumedLiters
-                        )
-                        finalSession?.let { 
-                            database.telemetryDao().updateSession(it)
-                        }
-                    } catch (e: Exception) {
-                        DiagnosticLog.e("TelemetryService", "Error updating session: ${e.message}", e)
-                    }
-                }
-            }
-            
-            obdManager?.disconnect()
+            runBlocking { finalizeSession() }
+            bluetoothOBDManager?.disconnect()
             orientationManager?.stop()
             // The fused client's callback outlived the service before this - requestLocationUpdates
             // was never paired with a removeLocationUpdates anywhere.

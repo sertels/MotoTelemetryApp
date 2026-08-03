@@ -15,6 +15,7 @@ import com.example.mototelemetryapp.data.TelemetryRecord
 import com.example.mototelemetryapp.data.restoreFromBackupFile
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -192,8 +193,13 @@ class DashboardViewModel : ViewModel() {
     private val _sessions = MutableStateFlow<List<Session>>(emptyList())
     val sessions = _sessions.asStateFlow()
 
+    private var historyCollectJob: Job? = null
+
     fun fetchHistory(context: Context) {
-        viewModelScope.launch {
+        // Room's getAllSessions() Flow never completes, so each call would otherwise stack one
+        // more permanent collector on top of the last (initial load + again after every restore).
+        historyCollectJob?.cancel()
+        historyCollectJob = viewModelScope.launch {
             val db = AppDatabase.getDatabase(context)
             db.telemetryDao().getAllSessions().collect {
                 _sessions.value = it
@@ -226,19 +232,15 @@ class DashboardViewModel : ViewModel() {
 
     private val _obdConnected = MutableStateFlow(false)
     val obdConnected = _obdConnected.asStateFlow()
-    private var obdConnectedCollectJob: Job? = null
 
     private val _obdSweepRunning = MutableStateFlow(false)
     val obdSweepRunning = _obdSweepRunning.asStateFlow()
-    private var obdSweepRunningCollectJob: Job? = null
 
     private val _obdSweepResults = MutableStateFlow<List<ObdSweepEntry>>(emptyList())
     val obdSweepResults = _obdSweepResults.asStateFlow()
-    private var obdSweepResultsCollectJob: Job? = null
 
     private val _obdSweepProgress = MutableStateFlow(0 to 0)
     val obdSweepProgress = _obdSweepProgress.asStateFlow()
-    private var obdSweepProgressCollectJob: Job? = null
 
     // The coroutine actually running the sweep, so a user-initiated cancel can stop it mid-run
     // instead of just dismissing the dialog while it keeps probing the bike in the background.
@@ -251,27 +253,21 @@ class DashboardViewModel : ViewModel() {
 
     private val _obdMilOn = MutableStateFlow(false)
     val obdMilOn = _obdMilOn.asStateFlow()
-    private var obdMilOnCollectJob: Job? = null
 
     private val _obdDtcCodes = MutableStateFlow<List<String>>(emptyList())
     val obdDtcCodes = _obdDtcCodes.asStateFlow()
-    private var obdDtcCodesCollectJob: Job? = null
 
     private val _obdRawData = MutableStateFlow<Map<String, Int>>(emptyMap())
     val obdRawData = _obdRawData.asStateFlow()
-    private var obdRawDataCollectJob: Job? = null
 
     private val _obdPidStatus = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     val obdPidStatus = _obdPidStatus.asStateFlow()
-    private var obdPidStatusCollectJob: Job? = null
 
     private val _canMonitorRunning = MutableStateFlow(false)
     val canMonitorRunning = _canMonitorRunning.asStateFlow()
-    private var canMonitorRunningCollectJob: Job? = null
 
     private val _canMonitorFrames = MutableStateFlow<List<String>>(emptyList())
     val canMonitorFrames = _canMonitorFrames.asStateFlow()
-    private var canMonitorFramesCollectJob: Job? = null
 
     // Fixed for the service's lifetime rather than a flow - the source is chosen once in
     // onCreate() and never swapped, so this only needs re-reading on (re)bind.
@@ -281,149 +277,94 @@ class DashboardViewModel : ViewModel() {
     // Max lean this ride, live - not just the value saved to the session at the end.
     private val _maxLeanLeft = MutableStateFlow(0f)
     val maxLeanLeft = _maxLeanLeft.asStateFlow()
-    private var maxLeanLeftCollectJob: Job? = null
 
     private val _maxLeanRight = MutableStateFlow(0f)
     val maxLeanRight = _maxLeanRight.asStateFlow()
-    private var maxLeanRightCollectJob: Job? = null
 
     // Which source (phone or bike) actually produced the current Max L/Max R, so the UI can
     // color-code it the same way live OBD readouts already are.
     private val _maxLeanLeftSource = MutableStateFlow(LeanSource.BIKE)
     val maxLeanLeftSource = _maxLeanLeftSource.asStateFlow()
-    private var maxLeanLeftSourceCollectJob: Job? = null
 
     private val _maxLeanRightSource = MutableStateFlow(LeanSource.BIKE)
     val maxLeanRightSource = _maxLeanRightSource.asStateFlow()
-    private var maxLeanRightSourceCollectJob: Job? = null
 
     // Max G this ride, live - same reasoning as maxLeanLeft/Right above.
     private val _maxGForceLat = MutableStateFlow(0f)
     val maxGForceLat = _maxGForceLat.asStateFlow()
-    private var maxGForceLatCollectJob: Job? = null
 
     private val _maxGForceLon = MutableStateFlow(0f)
     val maxGForceLon = _maxGForceLon.asStateFlow()
-    private var maxGForceLonCollectJob: Job? = null
 
-    private var trackingActiveCollectJob: Job? = null
+    // Every collector mirroring a service StateFlow into this ViewModel, managed as one set -
+    // the 17 per-flow Job fields this replaces had already let the two cancel/reset paths
+    // (onServiceDisconnected and unbindService) drift into resetting different subsets.
+    private val serviceMirrorJobs = mutableListOf<Job>()
+
+    private fun <T> mirror(source: StateFlow<T>?, target: MutableStateFlow<T>) {
+        source ?: return
+        serviceMirrorJobs += viewModelScope.launch { source.collect { target.value = it } }
+    }
+
+    private fun cancelServiceMirrors() {
+        serviceMirrorJobs.forEach { it.cancel() }
+        serviceMirrorJobs.clear()
+    }
+
+    // Shared by onServiceDisconnected and unbindService so the two can't diverge. Max lean/G
+    // and _isTrackingActive are deliberately NOT reset here: a ride keeps recording in the
+    // background while the UI is unbound, so those shouldn't flash back to zero/false.
+    private fun resetServiceState() {
+        telemetryService = null
+        _obdSimulated.value = false
+        _obdConnected.value = false
+        _obdSweepRunning.value = false
+        _obdSweepProgress.value = 0 to 0
+        _obdMilOn.value = false
+        _obdDtcCodes.value = emptyList()
+        _obdRawData.value = emptyMap()
+        _obdPidStatus.value = emptyMap()
+        _canMonitorRunning.value = false
+        _canMonitorFrames.value = emptyList()
+    }
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as TelemetryService.LocalBinder
-            telemetryService = binder.getService()
+            val boundService = binder.getService()
+            telemetryService = boundService
             _isServiceBound.value = true
-            _obdSimulated.value = telemetryService?.obdSimulated == true
+            _obdSimulated.value = boundService.obdSimulated
+
+            cancelServiceMirrors()
             // Binding (e.g. just opening Panel or Bike Info) isn't the same as a ride actually
             // being recorded - observe the service's real tracking state instead of assuming
             // true, otherwise Backup/Restore's "don't run mid-ride" guard gets stuck disabled.
             // Collected (not read once) since onStartCommand's flag flip and this bind callback
             // are dispatched independently with no ordering guarantee between them.
-            trackingActiveCollectJob?.cancel()
-            trackingActiveCollectJob = telemetryService?.isTrackingActive?.let { flow ->
-                viewModelScope.launch { flow.collect { _isTrackingActive.value = it } }
-            }
-            obdConnectedCollectJob?.cancel()
-            obdConnectedCollectJob = telemetryService?.obdConnected?.let { flow ->
-                viewModelScope.launch { flow.collect { _obdConnected.value = it } }
-            }
-            obdSweepRunningCollectJob?.cancel()
-            obdSweepRunningCollectJob = telemetryService?.obdSweepRunning?.let { flow ->
-                viewModelScope.launch { flow.collect { _obdSweepRunning.value = it } }
-            }
-            obdSweepResultsCollectJob?.cancel()
-            obdSweepResultsCollectJob = telemetryService?.obdSweepResults?.let { flow ->
-                viewModelScope.launch { flow.collect { _obdSweepResults.value = it } }
-            }
-            obdSweepProgressCollectJob?.cancel()
-            obdSweepProgressCollectJob = telemetryService?.obdSweepProgress?.let { flow ->
-                viewModelScope.launch { flow.collect { _obdSweepProgress.value = it } }
-            }
-            obdMilOnCollectJob?.cancel()
-            obdMilOnCollectJob = telemetryService?.obdMilOn?.let { flow ->
-                viewModelScope.launch { flow.collect { _obdMilOn.value = it } }
-            }
-            obdDtcCodesCollectJob?.cancel()
-            obdDtcCodesCollectJob = telemetryService?.obdDtcCodes?.let { flow ->
-                viewModelScope.launch { flow.collect { _obdDtcCodes.value = it } }
-            }
-            obdRawDataCollectJob?.cancel()
-            obdRawDataCollectJob = telemetryService?.obdRawData?.let { flow ->
-                viewModelScope.launch { flow.collect { _obdRawData.value = it } }
-            }
-            obdPidStatusCollectJob?.cancel()
-            obdPidStatusCollectJob = telemetryService?.obdPidStatus?.let { flow ->
-                viewModelScope.launch { flow.collect { _obdPidStatus.value = it } }
-            }
-            canMonitorRunningCollectJob?.cancel()
-            canMonitorRunningCollectJob = telemetryService?.canMonitorRunning?.let { flow ->
-                viewModelScope.launch { flow.collect { _canMonitorRunning.value = it } }
-            }
-            canMonitorFramesCollectJob?.cancel()
-            canMonitorFramesCollectJob = telemetryService?.canMonitorFrames?.let { flow ->
-                viewModelScope.launch { flow.collect { _canMonitorFrames.value = it } }
-            }
-            maxLeanLeftCollectJob?.cancel()
-            maxLeanLeftCollectJob = telemetryService?.maxLeanLeft?.let { flow ->
-                viewModelScope.launch { flow.collect { _maxLeanLeft.value = it } }
-            }
-            maxLeanRightCollectJob?.cancel()
-            maxLeanRightCollectJob = telemetryService?.maxLeanRight?.let { flow ->
-                viewModelScope.launch { flow.collect { _maxLeanRight.value = it } }
-            }
-            maxLeanLeftSourceCollectJob?.cancel()
-            maxLeanLeftSourceCollectJob = telemetryService?.maxLeanLeftSource?.let { flow ->
-                viewModelScope.launch { flow.collect { _maxLeanLeftSource.value = it } }
-            }
-            maxLeanRightSourceCollectJob?.cancel()
-            maxLeanRightSourceCollectJob = telemetryService?.maxLeanRightSource?.let { flow ->
-                viewModelScope.launch { flow.collect { _maxLeanRightSource.value = it } }
-            }
-            maxGForceLatCollectJob?.cancel()
-            maxGForceLatCollectJob = telemetryService?.maxGForceLat?.let { flow ->
-                viewModelScope.launch { flow.collect { _maxGForceLat.value = it } }
-            }
-            maxGForceLonCollectJob?.cancel()
-            maxGForceLonCollectJob = telemetryService?.maxGForceLon?.let { flow ->
-                viewModelScope.launch { flow.collect { _maxGForceLon.value = it } }
-            }
+            mirror(boundService.isTrackingActive, _isTrackingActive)
+            mirror(boundService.obdConnected, _obdConnected)
+            mirror(boundService.obdSweepRunning, _obdSweepRunning)
+            mirror(boundService.obdSweepResults, _obdSweepResults)
+            mirror(boundService.obdSweepProgress, _obdSweepProgress)
+            mirror(boundService.obdMilOn, _obdMilOn)
+            mirror(boundService.obdDtcCodes, _obdDtcCodes)
+            mirror(boundService.obdRawData, _obdRawData)
+            mirror(boundService.obdPidStatus, _obdPidStatus)
+            mirror(boundService.canMonitorRunning, _canMonitorRunning)
+            mirror(boundService.canMonitorFrames, _canMonitorFrames)
+            mirror(boundService.maxLeanLeft, _maxLeanLeft)
+            mirror(boundService.maxLeanRight, _maxLeanRight)
+            mirror(boundService.maxLeanLeftSource, _maxLeanLeftSource)
+            mirror(boundService.maxLeanRightSource, _maxLeanRightSource)
+            mirror(boundService.maxGForceLat, _maxGForceLat)
+            mirror(boundService.maxGForceLon, _maxGForceLon)
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
-            telemetryService = null
             _isServiceBound.value = false
-            _obdSimulated.value = false
-            // _isTrackingActive is intentionally left as-is - it reflects whether a ride is
-            // actually being recorded, independent of whether the UI is currently bound.
-            trackingActiveCollectJob?.cancel()
-            obdConnectedCollectJob?.cancel()
-            _obdConnected.value = false
-            obdSweepRunningCollectJob?.cancel()
-            obdSweepResultsCollectJob?.cancel()
-            obdSweepProgressCollectJob?.cancel()
-            _obdSweepRunning.value = false
-            _obdSweepProgress.value = 0 to 0
-            obdMilOnCollectJob?.cancel()
-            _obdMilOn.value = false
-            obdDtcCodesCollectJob?.cancel()
-            _obdDtcCodes.value = emptyList()
-            obdRawDataCollectJob?.cancel()
-            _obdRawData.value = emptyMap()
-            obdPidStatusCollectJob?.cancel()
-            _obdPidStatus.value = emptyMap()
-            canMonitorRunningCollectJob?.cancel()
-            _canMonitorRunning.value = false
-            canMonitorFramesCollectJob?.cancel()
-            _canMonitorFrames.value = emptyList()
-            maxLeanLeftCollectJob?.cancel()
-            maxLeanRightCollectJob?.cancel()
-            maxLeanLeftSourceCollectJob?.cancel()
-            maxLeanRightSourceCollectJob?.cancel()
-            maxGForceLatCollectJob?.cancel()
-            maxGForceLonCollectJob?.cancel()
-            // Left as-is (not reset to 0) on disconnect, same reasoning as _isTrackingActive: a
-            // ride keeps recording in the background even while the UI is briefly unbound, so the
-            // last-known max lean/G shouldn't flash back to zero.
+            cancelServiceMirrors()
+            resetServiceState()
         }
     }
 
@@ -494,30 +435,8 @@ class DashboardViewModel : ViewModel() {
             context.unbindService(connection)
             _isServiceBound.value = false
         }
-        telemetryService = null
-        obdConnectedCollectJob?.cancel()
-        _obdConnected.value = false
-        obdSweepRunningCollectJob?.cancel()
-        obdSweepResultsCollectJob?.cancel()
-        _obdSweepRunning.value = false
-        obdMilOnCollectJob?.cancel()
-        _obdMilOn.value = false
-        obdDtcCodesCollectJob?.cancel()
-        _obdDtcCodes.value = emptyList()
-        obdRawDataCollectJob?.cancel()
-        _obdRawData.value = emptyMap()
-        obdPidStatusCollectJob?.cancel()
-        _obdPidStatus.value = emptyMap()
-        canMonitorRunningCollectJob?.cancel()
-        _canMonitorRunning.value = false
-        canMonitorFramesCollectJob?.cancel()
-        _canMonitorFrames.value = emptyList()
-        maxLeanLeftCollectJob?.cancel()
-        maxLeanRightCollectJob?.cancel()
-        maxLeanLeftSourceCollectJob?.cancel()
-        maxLeanRightSourceCollectJob?.cancel()
-        maxGForceLatCollectJob?.cancel()
-        maxGForceLonCollectJob?.cancel()
+        cancelServiceMirrors()
+        resetServiceState()
     }
 
     // Servis bağlıyken akışı expose et
