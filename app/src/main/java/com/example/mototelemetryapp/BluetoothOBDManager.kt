@@ -330,6 +330,18 @@ class BluetoothOBDManager(
         try {
             withContext(Dispatchers.IO) {
                 ioMutex.withLock {
+                    // Pinned to this specific connection's streams for the whole capture - reading
+                    // the mutable inputStream/outputStream fields instead would silently follow a
+                    // concurrent reconnect (TelemetryService's ACL receiver can disconnect()+
+                    // connect() at any time, neither of which takes ioMutex) onto a brand new
+                    // socket mid-loop, splicing two sessions' bytes together into one "capture".
+                    // Confirmed on a real one, 2026-08-07: CAN-ID headers vanished partway through
+                    // (the new connection's ATZ reset ATH1) and a stray "STOPPED" (the ELM327's own
+                    // response to the old session's teardown byte) showed up mid-file. Pinning means
+                    // a mid-capture reconnect now just ends this capture early via a clean
+                    // IOException on the dead old socket, instead of quietly corrupting it.
+                    val stream = inputStream
+                    val out = outputStream
                     // ATH1 (headers on) so each captured line is prefixed with its CAN ID - without
                     // it the adapter streams bare data bytes with no way to tell which ID any of
                     // them came from, making the whole point of this capture (find the one ID that
@@ -339,21 +351,21 @@ class BluetoothOBDManager(
                     // be harmless too, but restoring ATH0 keeps the normal poll loop's behavior
                     // exactly as it was before this ran.
                     try {
-                        outputStream?.write("ATH1\r".toByteArray())
-                        outputStream?.flush()
+                        out?.write("ATH1\r".toByteArray())
+                        out?.flush()
                     } catch (_: IOException) {
                     }
                     delay(100.milliseconds)
                     try {
                         val drain = ByteArray(256)
-                        if ((inputStream?.available() ?: 0) > 0) inputStream?.read(drain)
+                        if ((stream?.available() ?: 0) > 0) stream?.read(drain)
                     } catch (_: IOException) {
                     }
 
                     fun sendAtma() {
                         try {
-                            outputStream?.write("ATMA\r".toByteArray())
-                            outputStream?.flush()
+                            out?.write("ATMA\r".toByteArray())
+                            out?.flush()
                         } catch (_: IOException) {
                         }
                     }
@@ -372,12 +384,12 @@ class BluetoothOBDManager(
                         // delay() between polls is a real suspension point, so the deadline (and
                         // cancellation) actually hold here.
                         val bytes = try {
-                            val available = inputStream?.available() ?: 0
+                            val available = stream?.available() ?: 0
                             if (available == 0) {
                                 delay(20.milliseconds)
                                 continue
                             }
-                            inputStream?.read(buffer, 0, minOf(buffer.size, available)) ?: -1
+                            stream?.read(buffer, 0, minOf(buffer.size, available)) ?: -1
                         } catch (_: IOException) {
                             break
                         }
@@ -421,29 +433,29 @@ class BluetoothOBDManager(
                     // '>' prompt (ELM327 datasheet) - drain the echo/prompt afterward so it
                     // doesn't get misread as the start of the next real command's response.
                     try {
-                        outputStream?.write(" ".toByteArray())
-                        outputStream?.flush()
+                        out?.write(" ".toByteArray())
+                        out?.flush()
                     } catch (_: IOException) {
                     }
                     delay(200.milliseconds)
                     try {
                         val drain = ByteArray(256)
-                        while ((inputStream?.available() ?: 0) > 0) {
-                            if ((inputStream?.read(drain) ?: -1) == -1) break
+                        while ((stream?.available() ?: 0) > 0) {
+                            if ((stream?.read(drain) ?: -1) == -1) break
                         }
                     } catch (_: IOException) {
                     }
 
                     // Restore ATH0 so the normal poll loop resumes exactly as before this ran.
                     try {
-                        outputStream?.write("ATH0\r".toByteArray())
-                        outputStream?.flush()
+                        out?.write("ATH0\r".toByteArray())
+                        out?.flush()
                     } catch (_: IOException) {
                     }
                     delay(100.milliseconds)
                     try {
                         val drain2 = ByteArray(256)
-                        if ((inputStream?.available() ?: 0) > 0) inputStream?.read(drain2)
+                        if ((stream?.available() ?: 0) > 0) stream?.read(drain2)
                     } catch (_: IOException) {
                     }
                 }
