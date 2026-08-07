@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -369,11 +370,21 @@ class BluetoothOBDManager(
                         } catch (_: IOException) {
                         }
                     }
-                    sendAtma()
-                    val deadline = System.currentTimeMillis() + durationSeconds * 1000L
-                    val buffer = ByteArray(1024)
-                    val lineBuilder = StringBuilder()
-                    while (System.currentTimeMillis() < deadline) {
+                    // The stop-monitor/ATH0-restore teardown below used to be plain sequential code
+                    // after this loop, which cancellation (a new runCanMonitor() call cancels the
+                    // previous canMonitorJob) or an exception would skip entirely, leaving the
+                    // adapter stuck mid-ATMA with headers off. Confirmed on a real capture,
+                    // 2026-08-07: the *next* capture's very first byte (its own ATH1 command) was
+                    // swallowed by the ELM327 as "stop monitoring" for that stale session (hence a
+                    // literal "STOPPED" as the first captured line) and never got real CAN-ID
+                    // headers for its whole duration. try/finally with NonCancellable makes the
+                    // teardown unconditional.
+                    try {
+                        sendAtma()
+                        val deadline = System.currentTimeMillis() + durationSeconds * 1000L
+                        val buffer = ByteArray(1024)
+                        val lineBuilder = StringBuilder()
+                        while (System.currentTimeMillis() < deadline) {
                         // read() blocks with no built-in timeout and can't be timeboxed by
                         // withTimeoutOrNull either (cancellation is only observed once read()
                         // returns on its own) - on a quiet bus (e.g. ignition on/engine off, few
@@ -428,35 +439,43 @@ class BluetoothOBDManager(
                         }
                     }
                     _canMonitorFrames.value = frames.toList() // final flush past the throttled updates above
+                    } finally {
+                        // NonCancellable: this must still run even if the while loop above was
+                        // cancelled mid-iteration (e.g. a new runCanMonitor() call cancelling this
+                        // job) - see the comment above the outer try for why skipping it corrupts
+                        // the next capture. delay()/write() would otherwise throw immediately since
+                        // the coroutine is already in a cancelling state.
+                        withContext(NonCancellable) {
+                            // Sending any character stops monitor mode and returns the adapter to
+                            // the '>' prompt (ELM327 datasheet) - drain the echo/prompt afterward so
+                            // it doesn't get misread as the start of the next real command's response.
+                            try {
+                                out?.write(" ".toByteArray())
+                                out?.flush()
+                            } catch (_: IOException) {
+                            }
+                            delay(200.milliseconds)
+                            try {
+                                val drain = ByteArray(256)
+                                while ((stream?.available() ?: 0) > 0) {
+                                    if ((stream?.read(drain) ?: -1) == -1) break
+                                }
+                            } catch (_: IOException) {
+                            }
 
-                    // Sending any character stops monitor mode and returns the adapter to the
-                    // '>' prompt (ELM327 datasheet) - drain the echo/prompt afterward so it
-                    // doesn't get misread as the start of the next real command's response.
-                    try {
-                        out?.write(" ".toByteArray())
-                        out?.flush()
-                    } catch (_: IOException) {
-                    }
-                    delay(200.milliseconds)
-                    try {
-                        val drain = ByteArray(256)
-                        while ((stream?.available() ?: 0) > 0) {
-                            if ((stream?.read(drain) ?: -1) == -1) break
+                            // Restore ATH0 so the normal poll loop resumes exactly as before this ran.
+                            try {
+                                out?.write("ATH0\r".toByteArray())
+                                out?.flush()
+                            } catch (_: IOException) {
+                            }
+                            delay(100.milliseconds)
+                            try {
+                                val drain2 = ByteArray(256)
+                                if ((stream?.available() ?: 0) > 0) stream?.read(drain2)
+                            } catch (_: IOException) {
+                            }
                         }
-                    } catch (_: IOException) {
-                    }
-
-                    // Restore ATH0 so the normal poll loop resumes exactly as before this ran.
-                    try {
-                        out?.write("ATH0\r".toByteArray())
-                        out?.flush()
-                    } catch (_: IOException) {
-                    }
-                    delay(100.milliseconds)
-                    try {
-                        val drain2 = ByteArray(256)
-                        if ((stream?.available() ?: 0) > 0) stream?.read(drain2)
-                    } catch (_: IOException) {
                     }
                 }
             }
