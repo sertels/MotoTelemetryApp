@@ -252,7 +252,13 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         val authRequest = AuthorizationRequest.builder()
-                            .setRequestedScopes(listOf(Scope(DriveScopes.DRIVE_APPDATA)))
+                            // DRIVE_FILE (visible, app-created files in the user's normal My
+                            // Drive) alongside DRIVE_APPDATA (hidden, app-only ride-DB backups) -
+                            // diagnostics uploads need to be visible outside this app (the whole
+                            // point is reviewing them without the phone), appDataFolder can't do
+                            // that. Requesting both in one grant means either flow can reuse this
+                            // same token/consent instead of prompting twice.
+                            .setRequestedScopes(listOf(Scope(DriveScopes.DRIVE_APPDATA), Scope(DriveScopes.DRIVE_FILE)))
                             .build()
 
                         Identity.getAuthorizationClient(this@MainActivity)
@@ -678,6 +684,7 @@ class MainActivity : AppCompatActivity() {
                                 // switch shows the value actually in force - including the
                                 // no-adapter default that applies before anything has been stored.
                                 var simulateObd by remember { mutableStateOf(isRideSimulationEnabled(context)) }
+                                val diagnosticsUploadStatus by dashboardViewModel.diagnosticsUploadStatus.collectAsState()
 
                                 SettingsScreen(
                                     autoStartOnObdConnect = autoStartOnObdConnect,
@@ -712,7 +719,13 @@ class MainActivity : AppCompatActivity() {
                                         } else {
                                             Toast.makeText(context, R.string.diagnostic_log_empty, Toast.LENGTH_SHORT).show()
                                         }
-                                    }
+                                    },
+                                    onUploadDiagnosticsToDrive = {
+                                        requestDriveAccessToken(onToken = { token ->
+                                            dashboardViewModel.uploadDiagnosticsToCloud(context, token)
+                                        })
+                                    },
+                                    diagnosticsUploadStatus = diagnosticsUploadStatus
                                 )
                             }
                         }

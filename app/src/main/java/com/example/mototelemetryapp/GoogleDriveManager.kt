@@ -16,6 +16,15 @@ data class DriveBackupEntry(val fileId: String, val name: String, val createdTim
 
 class GoogleDriveManager(private val context: Context) {
 
+    companion object {
+        // Visible-folder name in the user's own My Drive, distinct from the hidden appDataFolder
+        // the ride-DB backup below uses. appDataFolder is invisible to anything but this app
+        // itself (not even browsable at drive.google.com), which defeats the point of a remote
+        // diagnostics handoff - the whole reason to upload these files is so they can be read
+        // from somewhere that isn't this phone.
+        private const val DIAGNOSTICS_FOLDER_NAME = "MotoTelemetryApp Diagnostics"
+    }
+
     private val tag = "GoogleDriveManager"
 
     // The Credential Manager / Authorization API sign-in flow already hands us a bearer access
@@ -29,6 +38,59 @@ class GoogleDriveManager(private val context: Context) {
         return Drive.Builder(NetHttpTransport(), GsonFactory(), requestInitializer)
             .setApplicationName("Moto Telemetry App")
             .build()
+    }
+
+    // drive.file scope only ever sees files/folders this app itself created, so searching by
+    // name+mimeType here is safe from colliding with an unrelated folder of the same name - and
+    // necessary so repeated uploads land in one folder instead of a new one each time.
+    private suspend fun findOrCreateDiagnosticsFolder(service: Drive): String? = withContext(Dispatchers.IO) {
+        try {
+            val existing = service.files().list()
+                .setQ("name = '$DIAGNOSTICS_FOLDER_NAME' and mimeType = 'application/vnd.google-apps.folder' and trashed = false")
+                .setSpaces("drive")
+                .setFields("files(id)")
+                .execute()
+            existing.files?.firstOrNull()?.id?.let { return@withContext it }
+
+            val metadata = com.google.api.services.drive.model.File()
+            metadata.name = DIAGNOSTICS_FOLDER_NAME
+            metadata.mimeType = "application/vnd.google-apps.folder"
+            service.files().create(metadata).setFields("id").execute().id
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to find/create diagnostics folder: ${e.message}", e)
+            null
+        }
+    }
+
+    // Uploads every file currently sitting in the diagnostics dir (diagnostic.log, CAN monitor
+    // captures, OBD sweep exports - whatever ObdSweepExport/DiagnosticLog have written) to a
+    // visible Drive folder, so a real-world test can be reviewed remotely without the phone ever
+    // being plugged into the machine doing the reviewing. Returns how many files uploaded
+    // successfully so the caller can tell "nothing to upload" from "upload failed".
+    suspend fun uploadDiagnostics(accessToken: String, files: List<File>): Int = withContext(Dispatchers.IO) {
+        if (files.isEmpty()) return@withContext 0
+        try {
+            val service = driveService(accessToken)
+            val folderId = findOrCreateDiagnosticsFolder(service) ?: return@withContext 0
+
+            var uploaded = 0
+            for (file in files) {
+                try {
+                    val metadata = com.google.api.services.drive.model.File()
+                    metadata.name = file.name
+                    metadata.parents = Collections.singletonList(folderId)
+                    val content = FileContent("text/plain", file)
+                    service.files().create(metadata, content).execute()
+                    uploaded++
+                } catch (e: Exception) {
+                    Log.e(tag, "Failed to upload ${file.name}: ${e.message}", e)
+                }
+            }
+            uploaded
+        } catch (e: Exception) {
+            Log.e(tag, "Diagnostics upload failed: ${e.message}", e)
+            0
+        }
     }
 
     suspend fun uploadDatabase(accessToken: String): Boolean = withContext(Dispatchers.IO) {

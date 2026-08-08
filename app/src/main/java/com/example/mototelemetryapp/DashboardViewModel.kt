@@ -145,6 +145,35 @@ class DashboardViewModel : ViewModel() {
         }
     }
 
+    private val _diagnosticsUploadStatus = MutableStateFlow<String?>(null)
+    val diagnosticsUploadStatus = _diagnosticsUploadStatus.asStateFlow()
+
+    // Uploads whatever's currently in the diagnostics dir (diagnostic.log, CAN monitor captures,
+    // OBD sweep exports) to a visible Drive folder - see GoogleDriveManager.uploadDiagnostics for
+    // why that has to be a different scope/folder than the hidden appDataFolder ride-DB backup
+    // uses above. Point of this is a remote handoff after a real-world test, so it deliberately
+    // does not clear the local files afterward - they stay shareable/re-uploadable too.
+    fun uploadDiagnosticsToCloud(context: Context, accessToken: String) {
+        viewModelScope.launch {
+            val files = DiagnosticLog.diagnosticsFiles(context)
+            if (files.isEmpty()) {
+                _diagnosticsUploadStatus.value = context.getString(R.string.diagnostics_upload_empty)
+                delay(2600)
+                _diagnosticsUploadStatus.value = null
+                return@launch
+            }
+            _diagnosticsUploadStatus.value = context.getString(R.string.diagnostics_upload_started)
+            val uploaded = GoogleDriveManager(context).uploadDiagnostics(accessToken, files)
+            _diagnosticsUploadStatus.value = if (uploaded > 0) {
+                context.getString(R.string.diagnostics_upload_success, uploaded)
+            } else {
+                context.getString(R.string.diagnostics_upload_error)
+            }
+            delay(2600)
+            _diagnosticsUploadStatus.value = null
+        }
+    }
+
     // Null means "not loaded" - either still loading, or the fetch/sign-in failed - which is
     // distinct from a successful fetch that just found zero backups (empty list).
     private val _driveBackups = MutableStateFlow<List<DriveBackupEntry>?>(null)

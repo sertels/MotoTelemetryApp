@@ -78,6 +78,14 @@ object DiagnosticLog {
         file.writeBytes(bytes.copyOfRange((bytes.size - TRIM_TO_BYTES).toInt(), bytes.size))
     }
 
+    // Every file DiagnosticLog/ObdSweepExport write - diagnostic.log, CAN monitor captures, OBD
+    // sweep exports - all share this one directory, so it doubles as "everything worth uploading
+    // after a real-world test" without each caller needing to know every export's naming scheme.
+    fun diagnosticsFiles(context: Context): List<File> {
+        val dir = File(context.applicationContext.filesDir, "diagnostics")
+        return dir.listFiles()?.filter { it.isFile }?.toList().orEmpty()
+    }
+
     // Null if init() hasn't run yet or nothing has been logged - callers should treat that as
     // "nothing to share" rather than an error.
     fun shareIntent(context: Context): Intent? {

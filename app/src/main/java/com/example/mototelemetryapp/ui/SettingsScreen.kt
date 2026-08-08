@@ -51,6 +51,8 @@ fun SettingsScreen(
     currentLocaleTag: String,
     onLanguageChange: (String) -> Unit,
     onShareDiagnosticLog: () -> Unit,
+    onUploadDiagnosticsToDrive: () -> Unit,
+    diagnosticsUploadStatus: String? = null,
     showDebugSection: Boolean = false,
     simulateObd: Boolean = false,
     onSimulateObdChange: (Boolean) -> Unit = {}
@@ -152,6 +154,27 @@ fun SettingsScreen(
         Text(
             text = stringResource(R.string.share_diagnostic_log_hint),
             color = TelemetryOnSurfaceMuted,
+            fontSize = 10.sp
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF161616), RoundedCornerShape(10.dp))
+                .border(1.dp, Color(0xFF232323), RoundedCornerShape(10.dp))
+                .clickable(onClick = onUploadDiagnosticsToDrive)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(imageVector = Icons.Default.BugReport, contentDescription = null, tint = TelemetryOnSurfaceMuted, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(text = stringResource(R.string.upload_diagnostics_to_drive), color = TelemetryOnSurface, fontSize = 12.sp)
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = diagnosticsUploadStatus ?: stringResource(R.string.upload_diagnostics_to_drive_hint),
+            color = if (diagnosticsUploadStatus != null) TelemetryAccent else TelemetryOnSurfaceMuted,
             fontSize = 10.sp
         )
 
