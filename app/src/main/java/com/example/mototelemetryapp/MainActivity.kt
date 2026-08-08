@@ -647,7 +647,7 @@ class MainActivity : AppCompatActivity() {
                                     onCancelObdSweep = { dashboardViewModel.cancelObdSweep() },
                                     canMonitorRunning = canMonitorRunning,
                                     canMonitorFrames = canMonitorFrames,
-                                    onRunCanMonitor = { seconds -> dashboardViewModel.runCanMonitor(seconds) }
+                                    onRunCanMonitor = { seconds -> dashboardViewModel.runCanMonitor(context, seconds) }
                                 )
                             }
                             composable("analysis") {

@@ -438,10 +438,16 @@ class DashboardViewModel : ViewModel() {
 
     private var canMonitorJob: Job? = null
 
-    fun runCanMonitor(durationSeconds: Int) {
+    // Saves the capture to disk itself rather than leaving that to the Share button - a real
+    // capture (8s-per-gear test, 2026-08-08) was lost when the rider tapped Close instead of
+    // Share right after it finished, since saveCanFrames used to only ever run as a side effect
+    // of sharing. Now the file exists (and is upload-able via "Upload Diagnostics to Drive")
+    // the moment the run completes, whether or not the rider ever opens the share sheet.
+    fun runCanMonitor(context: Context, durationSeconds: Int) {
         canMonitorJob?.cancel()
         canMonitorJob = viewModelScope.launch {
-            telemetryService?.runCanMonitor(durationSeconds)
+            val frames = telemetryService?.runCanMonitor(durationSeconds) ?: emptyList()
+            ObdSweepExport.saveCanFrames(context, frames)
         }
     }
 

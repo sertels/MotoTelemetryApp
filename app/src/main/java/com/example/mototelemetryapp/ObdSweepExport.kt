@@ -51,8 +51,12 @@ object ObdSweepExport {
 
     // Same reasoning as the sweep results above, for a raw ATMA capture (BluetoothOBDManager.
     // startCanMonitor) - one line per captured CAN frame, so it can be shared/diffed off-phone
-    // to spot which ID changed while the bike was tilted.
-    private fun saveCanFrames(context: Context, frames: List<String>): File? {
+    // to spot which ID changed while the bike was tilted. Public (not just shareCanFramesIntent's
+    // private helper) so a capture can be persisted the moment it finishes, independent of
+    // whether the rider ever taps "Share" - a real capture was lost entirely, 2026-08-08, when
+    // the rider closed the CAN monitor dialog straight after a finished run instead of sharing
+    // it first, since until now saving only ever happened as a side effect of sharing.
+    fun saveCanFrames(context: Context, frames: List<String>): File? {
         if (frames.isEmpty()) return null
         val dir = File(context.applicationContext.filesDir, "diagnostics").apply { mkdirs() }
         val file = File(dir, "can_monitor_${fileTimestampFormat.format(Date())}.txt")
