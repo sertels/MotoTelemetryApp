@@ -23,6 +23,7 @@ The application leverages the fact that this motorcycle shares the **BMW F900 ar
 - **Settings Tab:** One place for auto-start/ride-continuation, battery-optimization exemption, diagnostic log sharing, and language, instead of scattered across screens.
 - **Multi-language:** Full English/Turkish UI with in-app language switching.
 - **Cloud Backup & Restore:** Backup ride data to Google Drive and restore it back, either merging with what's on the phone or replacing it, via a picker listing all available backups by date.
+- **Diagnostics Upload:** Push the diagnostic log and any CAN monitor/OBD sweep captures to a visible "MotoTelemetryApp Diagnostics" folder in Drive from Settings, so a real-world test can be reviewed remotely without connecting the phone to a computer.
 
 ## 🛠 Tech Stack
 
@@ -42,6 +43,7 @@ The application leverages the fact that this motorcycle shares the **BMW F900 ar
     - An **Android** client with package name `com.example.mototelemetryapp` and the SHA-1 of your signing certificate (`keytool -list -v -keystore <keystore> -alias <alias>`).
     - A **Web application** client — its ID is what goes into `setServerClientId(...)` in `MainActivity.kt`. Using the Android client's ID there fails with `[28444] Developer console is not set up correctly`; Credential Manager's Google Sign-In requires the Web client ID as the token audience regardless of platform.
     - While the OAuth consent screen is in **Testing** status, every Google account that needs to sign in (including your own) must be added under **Audience → Test users**, or sign-in fails with `403: access_denied`.
+    - The app requests both `drive.appdata` (hidden ride-DB backups) and `drive.file` (visible diagnostics uploads, see below) scopes in one grant — add both under the OAuth consent screen's **Data Access** section, or the diagnostics upload silently fails to find/create its Drive folder.
 3.  **OBD2 Adapter:** Plug your Bluetooth ELM327 adapter into the motorcycle and pair it with your phone, then connect it once from the Panel's OBD badge dropdown — the app remembers whichever device you pick there, and auto-start (below) only works for a previously-connected device. If you haven't connected one yet, the app falls back to auto-detecting a paired device whose name contains `OBD`, `ELM327`, `ELM`, `VLINK`, `V-LINK`, `ICAR`, `VGATE`, or `OBDLINK`.
 4.  **Permissions:** The app will request Bluetooth, Location, and Notification permissions on the first launch.
 5.  **Tracking:** Start the data collection loop and background service with the "Start Tracking" button on the main screen, or enable **Auto-start tracking when OBD connects** in Settings to have it start automatically when the adapter powers on.
