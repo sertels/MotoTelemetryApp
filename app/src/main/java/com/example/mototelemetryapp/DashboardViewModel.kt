@@ -417,22 +417,27 @@ class DashboardViewModel : ViewModel() {
         }
     }
 
-    fun runObdSweep() {
+    // Same reasoning as runCanMonitor below: save to disk the moment the sweep finishes, not
+    // only if the rider remembers to tap Share on the results dialog afterward.
+    fun runObdSweep(context: Context) {
         obdSweepJob = viewModelScope.launch {
             telemetryService?.runObdSweep()
+            ObdSweepExport.save(context, telemetryService?.obdSweepResults?.value.orEmpty(), "manufacturer_did")
         }
     }
 
-    fun runStandardPidSweep() {
+    fun runStandardPidSweep(context: Context) {
         obdSweepJob = viewModelScope.launch {
             telemetryService?.runStandardPidSweep()
+            ObdSweepExport.save(context, telemetryService?.obdSweepResults?.value.orEmpty(), "standard_pid")
         }
     }
 
     // EXPLICITLY RISKY - see BluetoothOBDManager.trySecuritySessionProbe. Manual, one-off only.
-    fun runSecuritySessionProbe() {
+    fun runSecuritySessionProbe(context: Context) {
         obdSweepJob = viewModelScope.launch {
             telemetryService?.runSecuritySessionProbe()
+            ObdSweepExport.save(context, telemetryService?.obdSweepResults?.value.orEmpty(), "extended_session_probe")
         }
     }
 

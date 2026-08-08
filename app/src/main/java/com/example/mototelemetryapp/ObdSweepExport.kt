@@ -33,7 +33,10 @@ object ObdSweepExport {
     // (standard PID discovery, manufacturer DID sweep, the risky extended-session probe) -
     // without it every exported file was named "obd_sweep_<timestamp>.txt" regardless of which
     // one produced it, so two sweeps run minutes apart were indistinguishable once off the phone.
-    private fun save(context: Context, results: List<ObdSweepEntry>, kind: String): File? {
+    // Public (not just shareIntent's private helper) for the same reason saveCanFrames is -
+    // results should exist on disk the moment a sweep finishes, not only if the rider remembers
+    // to tap Share afterward.
+    fun save(context: Context, results: List<ObdSweepEntry>, kind: String): File? {
         if (results.isEmpty()) return null
         val dir = File(context.applicationContext.filesDir, "diagnostics").apply { mkdirs() }
         val file = File(dir, "obd_sweep_${kind}_${fileTimestampFormat.format(Date())}.txt")
