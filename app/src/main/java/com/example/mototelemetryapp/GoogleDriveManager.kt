@@ -23,6 +23,12 @@ class GoogleDriveManager(private val context: Context) {
         // diagnostics handoff - the whole reason to upload these files is so they can be read
         // from somewhere that isn't this phone.
         private const val DIAGNOSTICS_FOLDER_NAME = "MotoTelemetryApp Diagnostics"
+
+        // Diagnostic.log is a rolling file DiagnosticLog keeps appending to for as long as the
+        // app runs, so re-uploading it each time is meaningful - it should overwrite, not
+        // duplicate. Every other file here (CAN monitor captures, OBD sweep exports) is a
+        // one-shot timestamped export that never changes once written.
+        private const val ROLLING_LOG_NAME = "diagnostic.log"
     }
 
     private val tag = "GoogleDriveManager"
@@ -62,25 +68,42 @@ class GoogleDriveManager(private val context: Context) {
         }
     }
 
-    // Uploads every file currently sitting in the diagnostics dir (diagnostic.log, CAN monitor
-    // captures, OBD sweep exports - whatever ObdSweepExport/DiagnosticLog have written) to a
-    // visible Drive folder, so a real-world test can be reviewed remotely without the phone ever
-    // being plugged into the machine doing the reviewing. Returns how many files uploaded
-    // successfully so the caller can tell "nothing to upload" from "upload failed".
+    // Uploads whatever's currently in the diagnostics dir (diagnostic.log, CAN monitor captures,
+    // OBD sweep exports - whatever ObdSweepExport/DiagnosticLog have written) to a visible Drive
+    // folder, so a real-world test can be reviewed remotely without the phone ever being plugged
+    // into the machine doing the reviewing. Re-uploading everything on every call would just
+    // duplicate every already-uploaded capture (Drive doesn't enforce unique names within a
+    // folder, unlike a filesystem) - checks what's already there by name first, skips timestamped
+    // exports that are already up, and updates (not duplicates) the rolling log in place. Returns
+    // how many files were actually sent so the caller can tell "nothing new" from "upload failed".
     suspend fun uploadDiagnostics(accessToken: String, files: List<File>): Int = withContext(Dispatchers.IO) {
         if (files.isEmpty()) return@withContext 0
         try {
             val service = driveService(accessToken)
             val folderId = findOrCreateDiagnosticsFolder(service) ?: return@withContext 0
 
+            val existingByName = service.files().list()
+                .setQ("'$folderId' in parents and trashed = false")
+                .setSpaces("drive")
+                .setFields("files(id, name)")
+                .execute()
+                .files.orEmpty()
+                .associate { it.name to it.id }
+
             var uploaded = 0
             for (file in files) {
+                val existingId = existingByName[file.name]
+                if (existingId != null && file.name != ROLLING_LOG_NAME) continue // already up, immutable
                 try {
-                    val metadata = com.google.api.services.drive.model.File()
-                    metadata.name = file.name
-                    metadata.parents = Collections.singletonList(folderId)
                     val content = FileContent("text/plain", file)
-                    service.files().create(metadata, content).execute()
+                    if (existingId != null) {
+                        service.files().update(existingId, com.google.api.services.drive.model.File(), content).execute()
+                    } else {
+                        val metadata = com.google.api.services.drive.model.File()
+                        metadata.name = file.name
+                        metadata.parents = Collections.singletonList(folderId)
+                        service.files().create(metadata, content).execute()
+                    }
                     uploaded++
                 } catch (e: Exception) {
                     Log.e(tag, "Failed to upload ${file.name}: ${e.message}", e)
