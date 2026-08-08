@@ -4,6 +4,8 @@ This project is an Android telemetry application specifically optimized for the 
 
 The application leverages the fact that this motorcycle shares the **BMW F900 architecture** and uses the **4M96001** twin-cylinder engine block (manufactured by Loncin), making it compatible with advanced BMW UDS diagnostic protocols.
 
+**Test vehicle dash cluster firmware:** HW `SS621-L8`, OS `SS621X11-OS-V2.3.2`, HMI `SS621X11-HMI-V4.7`, MCU SW `SS621X11-10`. Every PID/DID in `docs/confirmed_pids.md` was verified against this exact dash - a different HW/OS/HMI/MCU version on your own bike may behave differently, especially for signals not yet mapped.
+
 ## 🚀 Key Features
 
 - **Live Engine Data (OBD2):** Real-time monitoring of Speed, RPM, Gear, Throttle Position, and Front/Rear Brake Pressure (via UDS/Enhanced PIDs) using a Bluetooth ELM327 adapter.
