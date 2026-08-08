@@ -202,6 +202,51 @@ class TelemetryService : Service() {
 
         registerObdLinkReceiver()
         observeObdConnectionForGracePeriod()
+        startLivePreviewLoop()
+    }
+
+    // Panel's gauges (currentTelemetry) used to only ever get populated by
+    // startTelemetryTracking()'s loop below, which only runs once "Start Tracking" has been
+    // pressed - connecting OBD alone (e.g. from Home's badge) left the "OBD Bağlı" indicator
+    // green with every gauge still blank, confirmed on a real connect, 2026-08-08. This fills the
+    // same currentTelemetry StateFlow from live OBD/sensor state independent of whether a ride is
+    // being recorded, so the gauges work the moment OBD connects. Only the instantaneous fields -
+    // no ride aggregates (max lean, fuel totals), no DB write - those stay exclusive to an actual
+    // recording session. Steps aside the instant tracking starts so the two loops never write
+    // currentTelemetry at the same time.
+    private fun startLivePreviewLoop() {
+        serviceScope.launch {
+            while (isActive) {
+                val obdManager = bluetoothOBDManager
+                val orientManager = orientationManager
+                if (!_trackingStarted.value && obdManager != null && orientManager != null && obdManager.isConnected.value) {
+                    val obdData = obdManager.obdData.value
+                    _currentTelemetry.value = TelemetryRecord(
+                        sessionId = -1,
+                        timestamp = System.currentTimeMillis(),
+                        speed = obdData["SPEED"] ?: 0,
+                        rpm = obdData["RPM"] ?: 0,
+                        gear = obdData["GEAR"] ?: 0,
+                        throttle = obdData["THROTTLE"] ?: 0,
+                        brakeFront = obdData["BRAKE_FRONT"] ?: 0,
+                        brakeRear = obdData["BRAKE_REAR"] ?: 0,
+                        leanAnglePhone = orientManager.leanAngle.value,
+                        leanAngleBike = (obdData["LEAN_BIKE"] ?: 0).toFloat(),
+                        gForceLat = orientManager.gForceLat.value,
+                        gForceLon = orientManager.gForceLon.value,
+                        fuelRate = (obdData["FUEL_RATE"] ?: 0) / 100f,
+                        fuelLevel = obdData["FUEL_LEVEL"] ?: 0,
+                        coolantTemp = obdData["COOLANT"] ?: 0,
+                        altitude = lastLocation?.altitude ?: 0.0,
+                        latitude = lastLocation?.latitude ?: 0.0,
+                        longitude = lastLocation?.longitude ?: 0.0
+                    )
+                } else if (!_trackingStarted.value && (obdManager == null || !obdManager.isConnected.value)) {
+                    _currentTelemetry.value = null
+                }
+                delay(200.milliseconds)
+            }
+        }
     }
 
     // Safety net alongside the ACL_DISCONNECTED broadcast above: BluetoothOBDManager can also
