@@ -1456,7 +1456,7 @@ const val KEY_RIDE_GRACE_PERIOD_MINUTES = "ride_grace_period_minutes"
 // Absent (rather than false) until the user picks a side, so isObdSimulationEnabled() can tell
 // "never chosen" from "explicitly off" and only then fall back to detecting a missing adapter.
 const val KEY_SIMULATE_OBD = "simulate_obd"
-const val DEFAULT_RIDE_GRACE_PERIOD_MINUTES = 10
+const val DEFAULT_RIDE_GRACE_PERIOD_MINUTES = 2
 const val MIN_RIDE_GRACE_PERIOD_MINUTES = 1
 const val MAX_RIDE_GRACE_PERIOD_MINUTES = 60
 
