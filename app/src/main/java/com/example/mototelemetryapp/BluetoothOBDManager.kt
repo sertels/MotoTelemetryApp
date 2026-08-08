@@ -351,16 +351,41 @@ class BluetoothOBDManager(
                     // .contains() on the expected substring, so leaving headers on afterward would
                     // be harmless too, but restoring ATH0 keeps the normal poll loop's behavior
                     // exactly as it was before this ran.
-                    try {
-                        out?.write("ATH1\r".toByteArray())
-                        out?.flush()
-                    } catch (_: IOException) {
+                    // Verify the adapter actually acknowledged ATH1 rather than assuming it from
+                    // a blind drain - two full captures on a real bike, 2026-08-08, came back
+                    // headerless start-to-finish (unlike the 2026-08-07 mid-capture corruption,
+                    // which had a different, already-fixed cause), with no way to tell from the
+                    // export alone whether the write failed, the OK reply was slow, or something
+                    // else ate it. One retry with a longer wait covers a slow reply; either way
+                    // this is now visible in the diagnostic log instead of silently proceeding.
+                    var ath1Acked = false
+                    for (attempt in 1..2) {
+                        try {
+                            out?.write("ATH1\r".toByteArray())
+                            out?.flush()
+                        } catch (e: IOException) {
+                            DiagnosticLog.e(tag, "CAN monitor: ATH1 write failed (deneme $attempt): ${e.message}")
+                        }
+                        delay(150.milliseconds)
+                        val reply = try {
+                            val drain = ByteArray(256)
+                            val available = stream?.available() ?: 0
+                            if (available > 0) {
+                                val read = stream?.read(drain, 0, minOf(drain.size, available)) ?: -1
+                                if (read > 0) String(drain, 0, read) else ""
+                            } else ""
+                        } catch (e: IOException) {
+                            DiagnosticLog.e(tag, "CAN monitor: ATH1 reply read failed (deneme $attempt): ${e.message}")
+                            ""
+                        }
+                        if (reply.contains("OK", ignoreCase = true)) {
+                            ath1Acked = true
+                            break
+                        }
+                        DiagnosticLog.w(tag, "CAN monitor: ATH1 not acked (deneme $attempt): \"${reply.trim()}\"")
                     }
-                    delay(100.milliseconds)
-                    try {
-                        val drain = ByteArray(256)
-                        if ((stream?.available() ?: 0) > 0) stream?.read(drain)
-                    } catch (_: IOException) {
+                    if (!ath1Acked) {
+                        DiagnosticLog.e(tag, "CAN monitor: ATH1 never acked - capture will likely be headerless.")
                     }
 
                     fun sendAtma() {
