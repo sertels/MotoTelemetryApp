@@ -201,6 +201,33 @@ class TelemetryService : Service() {
         db = AppDatabase.getDatabase(this)
 
         registerObdLinkReceiver()
+        observeObdConnectionForGracePeriod()
+    }
+
+    // Safety net alongside the ACL_DISCONNECTED broadcast above: BluetoothOBDManager can also
+    // tear its own link down without any OS broadcast ever mattering to it - its
+    // consecutive-write-failure watchdog calls disconnect() directly. Confirmed on a real ride,
+    // 2026-08-08: the write-failure watchdog fired 37s *before* the OS even got around to
+    // broadcasting ACL_DISCONNECTED for a Bluetooth link that had already gone bad, and separately,
+    // the broadcast that eventually did arrive never visibly reached onObdLinkLost() either - no
+    // grace-timeout log ever fired despite 5+ minutes elapsing, so the ride just kept "TAKİP AKTİF"
+    // forever. Observing isConnected directly catches every disconnect path (watchdog, broadcast,
+    // or anything else) instead of depending on exactly one signal actually arriving.
+    private fun observeObdConnectionForGracePeriod() {
+        serviceScope.launch {
+            var wasConnected = false
+            bluetoothOBDManager?.isConnected?.collect { connected ->
+                if (wasConnected && !connected) {
+                    onObdLinkLost(getSharedPreferences(APP_PREFS_NAME, Context.MODE_PRIVATE))
+                } else if (connected) {
+                    // Already reconnected by the time this observed it - just clear any grace
+                    // timer still counting down, nothing left to restore.
+                    graceTimeoutJob?.cancel()
+                    graceTimeoutJob = null
+                }
+                wasConnected = connected
+            }
+        }
     }
 
     // Only reacts while auto-start is enabled and the event is for the remembered OBD device -
