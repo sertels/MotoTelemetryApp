@@ -2,7 +2,7 @@
 
 This project is an Android telemetry application specifically optimized for the **Voge 900DSX** (Factory Model Code: **LX900-A**, also known as **DS900X**).
 
-The application leverages the fact that this motorcycle shares the **BMW F900 architecture** and uses the **4M96001** twin-cylinder engine block (manufactured by Loncin), making it compatible with advanced BMW UDS diagnostic protocols.
+The application leverages the fact that this motorcycle shares the **BMW F900 architecture** and uses the **4M96001** twin-cylinder engine block (manufactured by Loncin), making it compatible with advanced BMW UDS diagnostic protocols. That same 895cc engine also powers the current-generation **BMW F800GS** (2018+, not the older 798cc Rotax-engined F800) at a lower state of tune ([87 bhp vs. the F900's 105 bhp](https://www.rideapart.com/news/721824/voge-ds900x-bmw-f900gs-platform/)), so most of this should apply there too — untested so far, but worth trying if you own one.
 
 **Test vehicle dash cluster firmware:** HW `SS621-L8`, OS `SS621X11-OS-V2.3.2`, HMI `SS621X11-HMI-V4.7`, MCU SW `SS621X11-10`. Every PID/DID in `docs/confirmed_pids.md` was verified against this exact dash - a different HW/OS/HMI/MCU version on your own bike may behave differently, especially for signals not yet mapped.
 
