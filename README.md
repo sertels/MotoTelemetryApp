@@ -90,6 +90,8 @@ You can examine the architecture and technical details of the project in the fol
 - [📝 Implementation Plan](docs/implementation_plan.md) - Architectural decisions and patterns used across the app.
 - [📡 Confirmed PIDs](docs/confirmed_pids.md) - Every OBD-II/UDS request verified to work on this bike, standard vs. manufacturer-specific, for anyone reverse-engineering the same BMW F900 platform.
 
+These same docs are also browsable on the [project wiki](https://github.com/sertels/MotoTelemetryApp/wiki).
+
 ## ⚠️ Important Notes
 
 - **Lean Angle:** For the most accurate measurement using phone sensors, it is recommended to mount the phone vertically and securely on the motorcycle.
