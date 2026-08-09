@@ -16,7 +16,9 @@ request on the current connection actually matched what was expected, not just a
 cross-referencing another BMW F900-platform bike's CAN/DID data (e.g. the community CAN-ID
 spreadsheet) — different calibration revisions can shift layouts even on the same platform.
 
-## Standard OBD-II (SAE J1979, Mode 01/03)
+## ✅ Confirmed working
+
+### Standard OBD-II (SAE J1979, Mode 01/03)
 
 These follow the standard and should work on most OBD-II-compliant vehicles, not just this one.
 
@@ -55,7 +57,7 @@ These follow the standard and should work on most OBD-II-compliant vehicles, not
 | 7E0    | 0101   | MIL status / stored DTC count  |
 | 7E0    | 03     | Stored DTCs (Mode 03, decoded per SAE J2012) |
 
-## Manufacturer UDS (ISO 14229 Service 0x22 ReadDataByIdentifier)
+### Manufacturer UDS (ISO 14229 Service 0x22 ReadDataByIdentifier)
 
 BMW/Voge-specific DIDs, reverse-engineered by header/DID sweep and cross-checked against the
 motorcycle's own dashboard. Not part of any public standard — these are specific to this ECU/DID
@@ -63,22 +65,33 @@ allocation and may not carry over even to other BMW F900-platform bikes.
 
 | Header | DID     | Signal              | Notes |
 |--------|---------|----------------------|-------|
-| 7E0    | 2243F7  | Gear                 | 0 = neutral |
 | 7E1    | 222B05  | Front brake pressure | value scaling not fully calibrated — treat as relative, not absolute bar |
 | 7E1    | 222B06  | Rear brake pressure  | same caveat as front |
 | 7E1    | 22D10D  | Lean angle (from bike's own IMU) | Alternative to phone-sensor lean; source is selectable in the Panel |
-| 7E0    | 222503  | ECU odometer         | The real lifetime odometer DID — distinct from the standard PID 0131 above, which is "distance since DTC clear" |
 
-## Known unmapped signals
+## ❌ Not working
 
-- **`43FE` / `43FF`** — return negative responses (`7F 22 31`, "requestOutOfRange") in the Default
-  Diagnostic Session. Suspected to require a UDS Extended Diagnostic Session (`10 03`) first; the
-  app has a gated, engine-off-only probe for this in Bike Info (see `docs/walkthrough.md`) since
-  changing session state is not a pure read like everything else in this table.
+- **`2243F7` (Gear, header `7E0`)** and **`222503` (ECU odometer, header `7E0`)** — both listed as
+  confirmed in an earlier pass of this doc, but live retesting on 2026-08-09 shows both
+  consistently returning a negative response (`7F 22 31`, "requestOutOfRange") on the current test
+  vehicle, including with a UDS Extended Diagnostic Session actively granted (`50 03`) — see the
+  `43FE`/`43FF` entry below, whose "needs an extended session" hypothesis this same test disproved.
+  Moved here rather than left in the confirmed table above; root cause (ECU/calibration difference
+  from whenever these were first confirmed, or a session/security-access requirement this app
+  doesn't implement) is still open.
+- **`43FE` / `43FF`** — return negative responses (`7F 22 31`) in the Default Diagnostic Session.
+  ~~Suspected to require a UDS Extended Diagnostic Session (`10 03`) first~~ — retested 2026-08-09
+  with the session actually granted (`1003` → `50 03 00 32 01 F4`), and both DIDs still failed the
+  same way. The extended-session probe in Bike Info (engine-off only, gated) still exists since
+  opening the session isn't a pure read, but it's now a known dead end for these two specifically.
 - **Lean angle broadcast on the raw CAN bus** — `22D10D` above answers on request, but there's
   reason to believe the IMU also broadcasts lean angle passively on the bus without being asked.
   The app's raw CAN monitor (Bike Info) exists to capture and manually correlate this against known
   bike tilt, for anyone who wants to find the broadcasting CAN ID.
+- **Gear signal on the raw CAN bus** — a 1-2-N-1 shift test against a passive CAN capture
+  (2026-08-09) found no CAN ID with a clean 3-transition pattern matching the three shifts; the
+  earlier `12B` lead from a prior session's stall-event capture didn't repeat here either. Still
+  unconfirmed.
 
 ## How this list was built
 
