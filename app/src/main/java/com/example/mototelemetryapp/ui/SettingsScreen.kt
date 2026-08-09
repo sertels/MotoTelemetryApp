@@ -1,5 +1,7 @@
 package com.example.mototelemetryapp.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
@@ -25,9 +27,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.mototelemetryapp.BuildConfig
@@ -204,6 +208,24 @@ fun SettingsScreen(
             fontSize = 10.sp,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        val context = LocalContext.current
+        Text(
+            text = stringResource(R.string.developed_by, "Sertel"),
+            color = Color(0xFF4A4A4A),
+            fontSize = 10.sp,
+            textAlign = TextAlign.Center,
+            textDecoration = TextDecoration.Underline,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    val intent = Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse("https://github.com/sertels/MotoTelemetryApp")
+                    )
+                    context.startActivity(intent)
+                }
         )
     }
 }

@@ -105,6 +105,7 @@
     <string name="diagnostic_log_empty">Henüz tanılama günlüğü yok - hiçbir şey kaydedilmedi.</string>
     <string name="upload_diagnostics_to_drive">Tanılama Dosyalarını Drive\'a Yükle</string>
     <string name="upload_diagnostics_to_drive_hint">Tanılama günlüğünü ve varsa CAN monitor/OBD tarama kayıtlarını Drive\'ındaki "MotoTelemetryApp Diagnostics" klasörüne yükler, böylece telefon bağlanmadan uzaktan incelenebilir.</string>
+    <string name="developed_by">Geliştiren: %1$s · GitHub</string>
     <string name="diagnostics_upload_started">Tanılama dosyaları yükleniyor…</string>
     <string name="diagnostics_upload_success">%1$d dosya Drive\'a yüklendi!</string>
     <string name="diagnostics_upload_error">Tanılama yükleme hatası!</string>
