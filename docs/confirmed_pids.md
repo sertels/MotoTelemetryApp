@@ -60,22 +60,36 @@ them have ever returned real data on this bike; see that section for how this wa
 
 ## ❌ Not working
 
-- **`2243F7` (Gear), `222503` (ECU odometer), `222B05` (front brake), `222B06` (rear brake),
-  `22D10D` (bike-IMU lean angle) — all header `7E0`/`7E1` UDS DIDs, `012F` (fuel level) and `015E`
-  (fuel rate) — standard PIDs.** All seven were listed as confirmed in an earlier pass of this doc.
-  Cross-checked 2026-08-09 against every real (non-simulated) ride ever recorded in the app's own
-  database (55k+ records going back to 2026-08-01, `sessionId NOT IN` the day's 3 known-simulated
-  test rides) — every one of these seven columns is **exactly zero in every single real record**,
-  never once a nonzero value, which the diagnostic log's `NO DATA`/`7F 22 31` failures for the same
-  requests corroborate. Checking the recorded DB instead of just grepping the log for failures is
-  what caught fuel level/rate and the two brake DIDs - a live spot-check earlier the same day had
-  wrongly reported "yes, fuel level and rate work" going only off this doc's stale confirmed table.
-  Gear/odometer's extended-session hypothesis was separately disproved the same day (session
-  granted, `50 03`, both DIDs still `7F 22 31`) - root cause for any of these seven is still open.
-- **Lean angle broadcast on the raw CAN bus** — `22D10D` above never answers on request either (see
-  above), but there's reason to believe the IMU also broadcasts lean angle passively on the bus
-  without being asked. The app's raw CAN monitor (Bike Info) exists to capture and manually
-  correlate this against known bike tilt, for anyone who wants to find the broadcasting CAN ID.
+All seven rows below were listed as confirmed in an earlier pass of this doc. Cross-checked
+2026-08-09 against every real (non-simulated) ride ever recorded in the app's own database (55k+
+records going back to 2026-08-01, excluding the day's 3 known-simulated test rides) — every one of
+these columns is **exactly zero in every single real record**, never once a nonzero value, which
+the diagnostic log's failures for the same requests corroborate.
+
+| Header | PID/DID | Signal                | Response |
+|--------|---------|------------------------|----------|
+| 7E0    | 2243F7  | Gear                   | `7F 22 31`, even with a UDS Extended Diagnostic Session actively granted (`50 03`) |
+| 7E0    | 222503  | ECU odometer           | `7F 22 31`, same as Gear |
+| 7E1    | 222B05  | Front brake pressure   | `NO DATA` |
+| 7E1    | 222B06  | Rear brake pressure    | `NO DATA` |
+| 7E1    | 22D10D  | Lean angle (bike IMU)  | `NO DATA` |
+| 7E0    | 012F    | Fuel level             | `NO DATA` |
+| 7E0    | 015E    | Fuel rate              | `NO DATA` |
+| 7E0    | 43FE    | Unmapped                | `7F 22 31`, even with the session granted |
+| 7E0    | 43FF    | Unmapped                | `7F 22 31`, same as `43FE` |
+
+Checking the recorded DB instead of just grepping the log for failures is what caught fuel
+level/rate and the two brake DIDs — a live spot-check earlier the same day had wrongly reported
+"yes, fuel level and rate work" going only off this doc's stale confirmed table. The extended-session
+hypothesis for `2243F7`/`222503`/`43FE`/`43FF` was separately disproved the same day (session
+granted, `50 03`, all four still failed identically) — root cause for any row above is still open.
+
+Two related open leads, not request/response PIDs so they don't fit the table above:
+
+- **Lean angle broadcast on the raw CAN bus** — `22D10D` never answers on request (see above), but
+  there's reason to believe the IMU also broadcasts lean angle passively on the bus without being
+  asked. The app's raw CAN monitor (Bike Info) exists to capture and manually correlate this
+  against known bike tilt, for anyone who wants to find the broadcasting CAN ID.
 - **Gear signal on the raw CAN bus** — a 1-2-N-1 shift test against a passive CAN capture
   (2026-08-09) found no CAN ID with a clean 3-transition pattern matching the three shifts; the
   earlier `12B` lead from a prior session's stall-event capture didn't repeat here either. Still
