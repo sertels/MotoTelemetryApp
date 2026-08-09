@@ -1,0 +1,47 @@
+name: Sync docs to wiki
+
+# Keeps the wiki's mirrored pages in step with docs/*.md automatically, so they don't drift the
+# way the README/wiki once did before this workflow existed (they had to be copied by hand).
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/walkthrough.md
+      - docs/implementation_plan.md
+      - docs/confirmed_pids.md
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main repo
+        uses: actions/checkout@v4
+
+      - name: Checkout wiki repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Copy docs into wiki page names
+        run: |
+          cp docs/walkthrough.md wiki/Development-Walkthrough.md
+          cp docs/implementation_plan.md wiki/Implementation-Plan.md
+          cp docs/confirmed_pids.md wiki/Confirmed-PIDs.md
+
+      - name: Commit and push if changed
+        working-directory: wiki
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          if git diff --cached --quiet; then
+            echo "No changes to sync."
+            exit 0
+          fi
+          git commit -m "Sync from docs/ (${{ github.sha }})"
+          git push
