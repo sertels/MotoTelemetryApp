@@ -20,12 +20,16 @@ jobs:
       - name: Checkout main repo
         uses: actions/checkout@v4
 
+      # The built-in GITHUB_TOKEN cannot push to a repo's wiki no matter what the repo's Actions
+      # workflow permissions are set to - confirmed failing here 2026-08-09 ("Permission ... denied
+      # to github-actions[bot]", 403). WIKI_SYNC_TOKEN is a classic PAT with the repo scope,
+      # created for this workflow specifically.
       - name: Checkout wiki repo
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository }}.wiki
           path: wiki
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.WIKI_SYNC_TOKEN }}
 
       - name: Copy docs into wiki page names
         run: |
