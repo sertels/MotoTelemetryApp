@@ -165,13 +165,31 @@ class MainActivity : AppCompatActivity() {
                 permissionLauncher.launch(runtimePermissions.toTypedArray())
             }
 
-            // Service binding management - only bind when activity is created, not on recomposition
-            LaunchedEffect(Unit) {
-                // Only attach if a session is already running; don't spin up an inert,
-                // never-started service instance just by opening the app.
-                dashboardViewModel.bindService(context, autoCreate = false)
-                dashboardViewModel.fetchHistory(context)
-                dashboardViewModel.fetchDashboardSummary(context)
+            // Service/session state can go stale while the app is merely backgrounded (not
+            // destroyed): the grace-period timeout that finalizes a ride after a prolonged OBD
+            // disconnect runs entirely inside TelemetryService, with nothing bound to mirror the
+            // result into this ViewModel if the rider had already navigated Home (unbind) or
+            // locked the phone before it fired. A plain LaunchedEffect(Unit) here only ever ran
+            // once, at first composition, so Home kept showing "TAKİP AKTİF" - confirmed on a
+            // real ride, 2026-08-09, still stuck active well after the rider got home, because
+            // reopening the app just resumed the same Activity/Composition instead of recreating
+            // it. Re-running the same "attach if already running" resync on every ON_RESUME
+            // instead - not just once - catches that the moment the rider looks at the screen
+            // again.
+            DisposableEffect(lifecycleOwner) {
+                val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                    if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                        // Only attach if a session is already running; don't spin up an inert,
+                        // never-started service instance just by opening the app.
+                        if (!dashboardViewModel.isServiceBound.value) {
+                            dashboardViewModel.bindService(context, autoCreate = false)
+                        }
+                        dashboardViewModel.fetchHistory(context)
+                        dashboardViewModel.fetchDashboardSummary(context)
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
             }
             
             // Only unbind when activity is actually destroyed, not on configuration change

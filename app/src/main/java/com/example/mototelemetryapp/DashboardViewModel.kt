@@ -233,6 +233,21 @@ class DashboardViewModel : ViewModel() {
             val db = AppDatabase.getDatabase(context)
             db.telemetryDao().getAllSessions().collect {
                 _sessions.value = it
+                // isTrackingActive mirrors the service only while bound, and freezes at its last
+                // value otherwise - correct while a ride keeps recording unbound (see
+                // resetServiceState() above), but wrong if the ride actually ended (grace-period
+                // timeout) while nobody was bound to catch it. That leaves the service free to
+                // stopSelf() once nothing holds it, so a later resync has nothing left to rebind
+                // to either. Confirmed on a real device, 2026-08-09: a ride ended by the grace
+                // timer while the rider was on Home kept showing "TAKİP AKTİF" through an app
+                // resume, since the service was already gone by the time anything tried to
+                // rebind. The DB is ground truth regardless of whether the service is still
+                // alive, so only ever correct in the false direction here - the newest session's
+                // endTime is only non-null once finalizeSession() genuinely ran, so this can never
+                // stomp a real in-progress ride to false.
+                if (it.firstOrNull()?.endTime != null) {
+                    _isTrackingActive.value = false
+                }
             }
         }
     }
