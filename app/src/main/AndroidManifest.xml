@@ -35,10 +35,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.MotoTelemetryApp">
 
-        <!-- Google Maps API Key -->
+        <!-- Google Maps API Key - value injected from local.properties, see app/build.gradle.kts -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyBchx8l_eBHx1lyM8N7yXfAgkkl3EiTdaU" />
+            android:value="${MAPS_API_KEY}" />
 
         <!-- Arka planda çalışacak telemetri servisimiz -->
         <service

@@ -1,7 +1,19 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+}
+
+// Loaded from local.properties (gitignored) rather than committed in AndroidManifest.xml - GitHub
+// secret scanning flagged the old hardcoded key as publicly leaked, 2026-08-07. Restricting the
+// key itself (package name + SHA-1, Maps SDK for Android only) in Cloud Console still matters more
+// than keeping it out of the diff, since any installed APK trivially yields whatever key ships in
+// its manifest - this just stops a *fresh* key from being committed the same way again.
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
 }
 
 android {
@@ -14,6 +26,8 @@ android {
         targetSdk = 37
         versionCode = 11
         versionName = "1.8.2"
+
+        manifestPlaceholders["MAPS_API_KEY"] = localProperties.getProperty("MAPS_API_KEY", "")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

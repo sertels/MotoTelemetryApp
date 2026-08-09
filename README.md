@@ -8,29 +8,20 @@ The application leverages the fact that this motorcycle shares the **BMW F900 ar
 
 ## 🚀 Key Features
 
-- **Live Engine Data (OBD2):** Real-time monitoring of Speed, RPM, Gear, Throttle Position, and Front/Rear Brake Pressure (via UDS/Enhanced PIDs) using a Bluetooth ELM327 adapter.
-- **Physical Analysis (IMU):** Real-time **Lean Angle** and **G-Force** measurement using the phone's internal sensors and the motorcycle's internal IMU, with a one-tap calibration to zero out the phone's mount tilt.
-- **Route Tracking (GPS):** Visualization of the riding route on a map using Google Maps integration, with a stats overlay (distance, duration, average speed).
-- **Data Logging (Room DB):** Recording all telemetry data (Speed, RPM, Gear, Lean, GPS, etc.) to a local database at 5Hz (5 times per second), independent of whether an OBD2 adapter is connected.
-- **Auto-Start & Ride Continuation:** Optionally starts recording automatically the moment the OBD adapter connects (engine on), and keeps a short stop (red light, fuel stop) inside the same ride instead of splitting it into a new session, based on a configurable grace period.
-- **Check Engine Diagnostics:** Polls MIL status and stored DTCs (OBD Mode 01/03), surfaces a check-engine badge with the fault codes (each with a plain-language explanation), and supports clearing them (Mode 04) behind a confirmation step.
-- **Connection Health:** Detects a dead Bluetooth link (e.g. the adapter losing power when the ignition is switched off) by counting consecutive write failures, instead of leaving the UI stuck showing "OBD Connected" indefinitely.
-- **Bike Info Tab:** Live per-sensor readouts (coolant, fuel level/rate, battery voltage, intake/ambient temp, engine load, intake manifold pressure, catalyst temp, engine runtime, ECU odometer, distance since DTC clear, distance with MIL on), a **live sensor map** showing every known CAN header/DID with a green/red/gray dot for whether it answered correctly on the current connection, a diagnostic PID sweep tool, and a raw CAN bus monitor for reverse-engineering unmapped signals.
-- **Diagnostic Sweep Tools:** A safe standard-PID support scan (asks the ECU which Mode 01 PIDs it supports), a manufacturer DID sweep across known CAN headers, and an explicitly-gated UDS Extended Diagnostic Session probe (engine-off only, behind a confirmation dialog) for the two still-unmapped brake-related DIDs.
-- **Raw CAN Bus Monitor:** Passive, read-only capture of the raw CAN bus (`ATMA`) with selectable duration (8s up to 5 minutes), automatic recovery from ELM327 `BUFFER FULL` conditions on a busy bus, and a shareable text export — used to reverse-engineer signals that aren't exposed through a normal PID/DID request (e.g. lean angle broadcast by the IMU rather than requested from the ECU).
-- **Modern Dashboard:** A card-based, cyan-accented dark UI designed with Jetpack Compose, with an adaptive landscape layout and a screen-rotation lock so the display doesn't flip mid-corner.
-- **Home Dashboard:** Main menu shows your last ride, current fuel level, and an estimated service-interval countdown, plus quick-access shortcuts to Panel/History/Analysis/Bike Info/Settings.
-- **Ride Management:** Rename or delete recorded sessions from the Analysis tab.
-- **Analysis Charts:** Per-ride charts for Speed & RPM, Lean Angle, Lateral/Longitudinal G-Force, and Altitude, alongside session stats (max speed, max lean, max G, etc.) and a sparkline per session in the list.
-- **Settings Tab:** One place for auto-start/ride-continuation, battery-optimization exemption, diagnostic log sharing, and language, instead of scattered across screens.
-- **Multi-language:** Full English/Turkish UI with in-app language switching.
-- **Cloud Backup & Restore:** Backup ride data to Google Drive and restore it back, either merging with what's on the phone or replacing it, via a picker listing all available backups by date.
-- **Diagnostics Upload:** Push the diagnostic log and any CAN monitor/OBD sweep captures to a visible "MotoTelemetryApp Diagnostics" folder in Drive from Settings, so a real-world test can be reviewed remotely without connecting the phone to a computer.
+- **Live Engine Data (OBD2):** Speed, RPM, Gear, Throttle, Front/Rear Brake Pressure, and a full engine-health grid (coolant, fuel, battery, temps, etc.) over a Bluetooth ELM327 adapter, standard PIDs and BMW/Voge UDS DIDs alike.
+- **Physical Analysis (IMU):** Real-time Lean Angle and G-Force from the phone's sensors or the bike's own IMU, with one-tap calibration.
+- **Route Tracking (GPS) & Data Logging:** Rides recorded to a local database at 5Hz with a map view of the route, independent of whether an OBD2 adapter is connected.
+- **Auto-Start & Ride Continuation:** Starts recording the moment the OBD adapter connects, and rides through a short stop (red light, fuel stop) instead of splitting into a new session.
+- **Diagnostics:** Check-engine/DTC handling, a live green/red/gray status table for every known signal, standard-PID and manufacturer-DID sweeps, a raw CAN bus monitor for reverse-engineering unmapped signals, and a gated UDS Extended Diagnostic Session probe.
+- **Cloud Backup & Diagnostics Upload:** Ride data and diagnostic captures both push to Google Drive, so a real-world test can be reviewed remotely without connecting the phone to a computer.
+- **Multi-language:** Full English/Turkish UI.
+
+Full feature list on the [wiki](https://github.com/sertels/MotoTelemetryApp/wiki).
 
 ## 🛠 Tech Stack
 
 - **Language:** Kotlin
-- **UI:** Jetpack Compose (Material 3), Vico charts
+- **UI:** Jetpack Compose (Material 3), hand-drawn Canvas charts
 - **Architecture:** MVVM (Service → ViewModel → Compose UI, via StateFlow)
 - **Database:** Room Database
 - **Connectivity:** Bluetooth Classic (RFCOMM), OBD-II Mode 01/03/04, and UDS (ISO 14229) Service 0x22 ReadDataByIdentifier
@@ -40,7 +31,7 @@ The application leverages the fact that this motorcycle shares the **BMW F900 ar
 
 ## 📋 Setup and Usage
 
-1.  **Google Maps API:** Add your own API key to the `com.google.android.geo.API_KEY` field in the `app/src/main/AndroidManifest.xml` file.
+1.  **Google Maps API:** Add a line `MAPS_API_KEY=your_key_here` to `local.properties` (gitignored, created by Android Studio) — `app/build.gradle.kts` reads it into a manifest placeholder, so it's never committed. Restrict the key in Cloud Console to your app's package name + signing SHA-1 and the Maps SDK for Android API, since it still ships inside the APK regardless.
 2.  **Google Drive Backup/Restore (optional):** Needs a Google Cloud project with two OAuth 2.0 clients in the *same* project:
     - An **Android** client with package name `com.example.mototelemetryapp` and the SHA-1 of your signing certificate (`keytool -list -v -keystore <keystore> -alias <alias>`).
     - A **Web application** client — its ID is what goes into `setServerClientId(...)` in `MainActivity.kt`. Using the Android client's ID there fails with `[28444] Developer console is not set up correctly`; Credential Manager's Google Sign-In requires the Web client ID as the token audience regardless of platform.
@@ -75,13 +66,6 @@ The application leverages the fact that this motorcycle shares the **BMW F900 ar
 </tr>
 </table>
 
-- **Main Menu:** Last Ride, Fuel, and Service info cards, Quick Access shortcuts (Panel/History/Analysis/Bike Info/Settings), and Start Tracking/Stop/Backup/Restore controls.
-- **Panel:** Displays Speed, Gear, RPM, Throttle, and Brake bars. The lean gauge tilts in real-time based on the selected sensor (phone or bike), with a tap-to-calibrate button and a phone/motorcycle icon toggle. A check-engine badge appears next to the OBD status badge whenever the MIL is on, showing the stored DTCs and a clear-codes action.
-- **History:** View recorded routes as Polylines on the map, with a KM/duration/average speed overlay.
-- **Analysis:** Session list with per-ride speed sparklines, stats, rename, and delete, plus a detail view charting Speed/RPM, Lean Angle, G-Force, and Altitude over the ride.
-- **Bike Info:** Model/engine identity with the live ECU odometer, an engine-health stat grid (coolant, fuel, battery, intake/ambient temp, engine load, MAP, catalyst temp, engine runtime, etc.), a permanent diagnostics card, a live sensor-status table for every known CAN header/DID, a standard-PID and manufacturer-DID sweep tool, a gated UDS extended-session probe, and a raw CAN bus monitor for capturing unmapped signals.
-- **Settings:** Auto-start tracking on OBD connect, the ride-continuation grace period, battery-optimization exemption status, diagnostic log sharing, and language.
-
 ## 📖 Documentation and Development Process
 
 You can examine the architecture and technical details of the project in the following documents:
@@ -97,6 +81,14 @@ These same docs are also browsable on the [project wiki](https://github.com/sert
 - **Lean Angle:** For the most accurate measurement using phone sensors, it is recommended to mount the phone vertically and securely on the motorcycle.
 - **UDS Support:** Data like brake pressure and motorcycle lean angle are BMW/Voge-specific PIDs. The readability of this data may vary depending on the quality of your ELM327 adapter.
 - **CAN sweeps and the security-session probe are engine-off tools.** Probing unconfirmed CAN headers or opening a UDS Extended Diagnostic Session changes what the ECU responds to (or its session state) rather than just reading data — only the standard-PID scan and the raw CAN monitor are safe to run with the engine on.
+
+## Contributing
+
+Fixes or new confirmed PIDs from other BMW-F900-platform owners are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE)
 
 ---
 *Developed by: Sertel Şekerci*
