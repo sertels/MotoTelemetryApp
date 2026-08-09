@@ -36,15 +36,27 @@ object ObdSweepExport {
     // Public (not just shareIntent's private helper) for the same reason saveCanFrames is -
     // results should exist on disk the moment a sweep finishes, not only if the rider remembers
     // to tap Share afterward.
+    // Called once by the auto-save right after a sweep finishes, and again if the rider then
+    // taps Share on the same in-memory results - without the dedup below that second call wrote
+    // a byte-identical file under a new timestamp every time, e.g. 2026-08-09's extended session
+    // probe landing on disk twice two seconds apart.
     fun save(context: Context, results: List<ObdSweepEntry>, kind: String): File? {
         if (results.isEmpty()) return null
         val dir = File(context.applicationContext.filesDir, "diagnostics").apply { mkdirs() }
+        val body = "# Sweep type: $kind\n" +
+            results.joinToString("\n") { "${it.header}/${it.did}: ${it.response}" }
+        findLatestWithBody(dir, "obd_sweep_${kind}_", body)?.let { return it }
         val file = File(dir, "obd_sweep_${kind}_${fileTimestampFormat.format(Date())}.txt")
-        file.writeText(
-            versionHeader(context) + "# Sweep type: $kind\n" +
-                results.joinToString("\n") { "${it.header}/${it.did}: ${it.response}" }
-        )
+        file.writeText(versionHeader(context) + body)
         return file
+    }
+
+    // Content match ignores the version header line so re-running the exact same capture right
+    // after a version bump still dedups instead of writing a near-identical file.
+    private fun findLatestWithBody(dir: File, filenamePrefix: String, body: String): File? {
+        return dir.listFiles { f -> f.name.startsWith(filenamePrefix) }
+            ?.maxByOrNull { it.lastModified() }
+            ?.takeIf { it.readText().substringAfter("\n") == body }
     }
 
     fun shareIntent(context: Context, results: List<ObdSweepEntry>, kind: String): Intent? {
@@ -62,8 +74,10 @@ object ObdSweepExport {
     fun saveCanFrames(context: Context, frames: List<String>): File? {
         if (frames.isEmpty()) return null
         val dir = File(context.applicationContext.filesDir, "diagnostics").apply { mkdirs() }
+        val body = frames.joinToString("\n")
+        findLatestWithBody(dir, "can_monitor_", body)?.let { return it }
         val file = File(dir, "can_monitor_${fileTimestampFormat.format(Date())}.txt")
-        file.writeText(versionHeader(context) + frames.joinToString("\n"))
+        file.writeText(versionHeader(context) + body)
         return file
     }
 
