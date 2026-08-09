@@ -79,6 +79,7 @@ import com.example.mototelemetryapp.ui.CheckEngineBadge
 import com.example.mototelemetryapp.ui.DashboardScreen
 import com.example.mototelemetryapp.ui.ObdConnectErrorPill
 import com.example.mototelemetryapp.ui.ObdStatusBadge
+import com.example.mototelemetryapp.ui.TrackingActiveBadge
 import com.example.mototelemetryapp.ui.HistoryScreen
 import com.example.mototelemetryapp.ui.SettingsScreen
 import com.example.mototelemetryapp.ui.theme.MotoTelemetryAppTheme
@@ -336,6 +337,11 @@ class MainActivity : AppCompatActivity() {
                 val obdSweepProgress by dashboardViewModel.obdSweepProgress.collectAsState()
                 val obdConnectError by dashboardViewModel.obdConnectError.collectAsState()
                 val obdSimulated by dashboardViewModel.obdSimulated.collectAsState()
+                // Also hoisted here (not just read where Home used to show it) so a ride recording
+                // in the background stays visible from every screen, the same way OBD status does -
+                // it used to live only in Home's button stack, which pushed "Geri Yükle" off-screen
+                // on shorter devices and disappeared entirely once you navigated to Panel/Bike Info.
+                val isTrackingActive by dashboardViewModel.isTrackingActive.collectAsState()
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
@@ -385,6 +391,10 @@ class MainActivity : AppCompatActivity() {
                                 ObdConnectErrorPill(obdConnectError!!)
                             }
                             Spacer(modifier = Modifier.weight(1f))
+                            if (isTrackingActive) {
+                                TrackingActiveBadge()
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
                             if (obdMilOn) {
                                 CheckEngineBadge(dtcCodes = obdDtcCodes, onClearDtcs = { dashboardViewModel.clearObdDtcs() })
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -504,8 +514,6 @@ class MainActivity : AppCompatActivity() {
                     }
                 ) { innerPadding ->
                     Box(modifier = Modifier.padding(innerPadding)) {
-                        val isTrackingActive by dashboardViewModel.isTrackingActive.collectAsState()
-
                         NavHost(navController = navController, startDestination = "dashboard") {
                             composable("dashboard") {
                                 if (isBound) {
@@ -1077,29 +1085,9 @@ private fun HomeCtaStack(
     val pillShape = RoundedCornerShape(50)
     val textSize = if (buttonHeight > 46.dp) 15.sp else 14.sp
 
-    if (isTrackingActive) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box(
-                modifier = Modifier
-                    .size(6.dp)
-                    .clip(CircleShape)
-                    .background(TelemetryAccent)
-            )
-            Text(
-                text = stringResource(R.string.tracking_active_pill),
-                color = TelemetryAccent,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.8.sp,
-                modifier = Modifier
-                    .background(Color(0x1F00B4FF), RoundedCornerShape(100.dp))
-                    .border(1.dp, Color(0x6600B4FF), RoundedCornerShape(100.dp))
-                    .padding(horizontal = 0.dp)
-            )
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-    }
-
+    // The "TAKİP AKTİF" indicator now lives in the shared top bar (next to OBD status) instead
+    // of here - it used to only show on Home, and pushed "Geri Yükle" past the screen edge on
+    // shorter devices since this stack had no room budgeted for the extra pill + spacer.
     Button(
         onClick = { if (isTrackingActive) onGoToPanel() else onStartService() },
         modifier = pillModifier.height(buttonHeight),

@@ -213,6 +213,35 @@ fun LiveIndicator(modifier: Modifier = Modifier) {
     }
 }
 
+// Same pill styling as ObdStatusBadge, hoisted into the shared top bar for the same reason -
+// a ride recording in the background should stay visible from every screen, not just disappear
+// once you navigate away from Home (and previously, not push Home's own CTA buttons off-screen).
+@Composable
+fun TrackingActiveBadge(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .background(Color(0x1F00B4FF), RoundedCornerShape(100.dp))
+            .border(1.dp, Color(0x6600B4FF), RoundedCornerShape(100.dp))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(TelemetryAccent)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = stringResource(R.string.tracking_active_pill),
+            color = TelemetryAccent,
+            fontSize = 10.sp,
+            letterSpacing = 0.5.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
 @Composable
 fun ObdStatusBadge(
     connected: Boolean,
