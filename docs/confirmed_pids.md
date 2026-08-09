@@ -94,6 +94,14 @@ Two related open leads, not request/response PIDs so they don't fit the table ab
   (2026-08-09) found no CAN ID with a clean 3-transition pattern matching the three shifts; the
   earlier `12B` lead from a prior session's stall-event capture didn't repeat here either. Still
   unconfirmed.
+- **A completely different channel for fuel/gear/odometer, unexplored so far** — the bike's own
+  dash shows all three despite the OBD/UDS requests above never working, so it's getting them some
+  other way. [MOTO-HUB](https://github.com/vincenzobpt/MOTO-HUB) (a screen-mirroring app for
+  Voge/CFMOTO/Zontes dashboards, unrelated project) confirms these dashboards have a **T-Box
+  (telematics unit) reachable over Wi-Fi Direct**, separate from the OBD port - not something this
+  app has ever tried talking to. Whether the dash also exposes anything over a direct Bluetooth
+  link (rather than only Wi-Fi Direct to the T-Box) is unknown. Nothing implemented here yet - just
+  a lead for whoever picks this up next.
 
 ## How this list was built
 
