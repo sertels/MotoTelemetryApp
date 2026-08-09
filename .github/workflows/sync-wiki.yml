@@ -9,6 +9,7 @@ on:
       - docs/walkthrough.md
       - docs/implementation_plan.md
       - docs/confirmed_pids.md
+  workflow_dispatch: {}
 
 permissions:
   contents: read
