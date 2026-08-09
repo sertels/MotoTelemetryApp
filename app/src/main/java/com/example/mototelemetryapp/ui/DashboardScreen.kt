@@ -89,7 +89,9 @@ fun DashboardScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                LiveIndicator()
+                // Only shown while data is actually flowing - unconditional before this, so it
+                // claimed "LIVE" even with nothing connected and every gauge at zero.
+                if (data != null) LiveIndicator() else Spacer(modifier = Modifier)
                 GpsCoordsText(data)
             }
             // The status row above is pinned to the top; everything else shares the rest of the
@@ -141,7 +143,9 @@ fun DashboardScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                LiveIndicator()
+                // Only shown while data is actually flowing - unconditional before this, so it
+                // claimed "LIVE" even with nothing connected and every gauge at zero.
+                if (data != null) LiveIndicator() else Spacer(modifier = Modifier)
                 GpsCoordsText(data)
             }
             Spacer(modifier = Modifier.height(10.dp))

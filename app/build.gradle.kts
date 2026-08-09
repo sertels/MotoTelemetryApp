@@ -24,8 +24,8 @@ android {
         applicationId = "com.example.mototelemetryapp"
         minSdk = 31
         targetSdk = 37
-        versionCode = 11
-        versionName = "1.8.2"
+        versionCode = 12
+        versionName = "1.8.3"
 
         manifestPlaceholders["MAPS_API_KEY"] = localProperties.getProperty("MAPS_API_KEY", "")
 
