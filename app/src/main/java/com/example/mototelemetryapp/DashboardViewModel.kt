@@ -341,21 +341,16 @@ class DashboardViewModel : ViewModel() {
         serviceMirrorJobs.clear()
     }
 
-    // Shared by onServiceDisconnected and unbindService so the two can't diverge. Max lean/G
-    // and _isTrackingActive are deliberately NOT reset here: a ride keeps recording in the
-    // background while the UI is unbound, so those shouldn't flash back to zero/false.
+    // Shared by onServiceDisconnected and unbindService so the two can't diverge. Everything
+    // below mirrors state the service keeps living on its own regardless of whether any UI is
+    // bound to it - the OBD Bluetooth link, an in-flight sweep/CAN capture, max lean/G, ride
+    // tracking - so none of it is reset here; it would just flash to false/empty on the Home
+    // screen (unbind on the way there) and jump back the moment the next screen rebinds. Real-
+    // world case, 2026-08-09: tapping the Home icon unbinds, and obdConnected resetting here made
+    // Home show "OBD Bağlı Değil" seconds after Panel/Bike Info had shown it connected fine.
     private fun resetServiceState() {
         telemetryService = null
         _obdSimulated.value = false
-        _obdConnected.value = false
-        _obdSweepRunning.value = false
-        _obdSweepProgress.value = 0 to 0
-        _obdMilOn.value = false
-        _obdDtcCodes.value = emptyList()
-        _obdRawData.value = emptyMap()
-        _obdPidStatus.value = emptyMap()
-        _canMonitorRunning.value = false
-        _canMonitorFrames.value = emptyList()
     }
 
     private val connection = object : ServiceConnection {
