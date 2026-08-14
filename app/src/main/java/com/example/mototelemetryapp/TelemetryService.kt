@@ -275,14 +275,22 @@ class TelemetryService : Service() {
         }
     }
 
-    // Only reacts while auto-start is enabled and the event is for the remembered OBD device -
-    // this is a live link-state signal (radio-level connect/disconnect), independent of and
-    // more reliable than the SPP polling loop's own isConnected flag.
+    // Only reacts to events for the remembered OBD device - this is a live link-state signal
+    // (radio-level connect/disconnect), independent of and more reliable than the SPP polling
+    // loop's own isConnected flag.
     private fun registerObdLinkReceiver() {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 val appPrefs = getSharedPreferences(APP_PREFS_NAME, Context.MODE_PRIVATE)
-                if (!appPrefs.getBoolean(KEY_AUTO_START_ON_OBD_CONNECT, false)) return
+                // The auto-start setting governs STARTING rides (ObdAutoStartReceiver); a ride
+                // that's already recording, or waiting out its grace window, gets its link back
+                // regardless - gating continuation on that same setting meant that with auto-start
+                // off, a fuel stop always ended the ride at grace timeout because nothing ever
+                // reconnected, even though the grace window exists exactly for that case.
+                // isActive, not just non-null: the job reference outlives its own timeout firing,
+                // and a completed grace job means the ride already ended - no link owed to it.
+                val rideNeedsLink = _trackingStarted.value || graceTimeoutJob?.isActive == true
+                if (!rideNeedsLink && !appPrefs.getBoolean(KEY_AUTO_START_ON_OBD_CONNECT, false)) return
 
                 val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
@@ -560,10 +568,14 @@ class TelemetryService : Service() {
             for (r in records) {
                 recoveredMaxSpeed = max(recoveredMaxSpeed, r.speed)
                 recoveredMaxCoolant = max(recoveredMaxCoolant, r.coolantTemp)
-                if (r.leanAngleBike < 0) {
-                    recoveredMaxLeanLeft = max(recoveredMaxLeanLeft, -r.leanAngleBike)
+                // Same phone fallback as the live loop: bike lean (22D10D) reads exactly 0 both
+                // when upright and when the DID isn't answering (its normal state on this bike),
+                // so recovering from leanAngleBike alone left every orphaned ride at 0/0 max lean.
+                val leanForMax = if (r.leanAngleBike != 0f) r.leanAngleBike else r.leanAnglePhone
+                if (leanForMax < 0) {
+                    recoveredMaxLeanLeft = max(recoveredMaxLeanLeft, -leanForMax)
                 } else {
-                    recoveredMaxLeanRight = max(recoveredMaxLeanRight, r.leanAngleBike)
+                    recoveredMaxLeanRight = max(recoveredMaxLeanRight, leanForMax)
                 }
                 recoveredMaxGForceLat = max(recoveredMaxGForceLat, abs(r.gForceLat))
                 recoveredMaxGForceLon = max(recoveredMaxGForceLon, abs(r.gForceLon))

@@ -79,7 +79,10 @@ architectural patterns behind these.
   `TelemetryService` also registers a dynamic receiver for `ACL_CONNECTED`/`ACL_DISCONNECTED` on
   that device: on disconnect it drops the OBD link and starts a grace-period timer (configurable in
   Settings, default 10 min); reconnecting before it expires resumes into the *same* session,
-  otherwise the ride is finalized. Finalization on grace timeout happens explicitly
+  otherwise the ride is finalized. The auto-start setting only gates *starting* rides — a ride
+  that's already recording (or waiting out its grace window) is reconnected regardless, since
+  gating continuation on the same setting used to mean that with auto-start off, a fuel stop
+  always ended the ride at grace timeout because nothing ever reconnected. Finalization on grace timeout happens explicitly
   (`finalizeSession()` + `stopForeground` + `stopSelf`), **not** by relying on `onDestroy()` — a
   started-and-bound service isn't destroyed by `stopSelf()` while the UI still holds its binding,
   which used to leave the ride recording phone-sensor records until the user happened to leave the

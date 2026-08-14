@@ -68,8 +68,10 @@ abstract class AppDatabase : RoomDatabase() {
 
         // Forces any writes still sitting in the WAL file into the main .db file - needed before
         // copying the db file directly (e.g. for a backup), since WAL is Room's default journal mode.
+        // moveToFirst() is what actually executes the statement - SQLiteCursor runs its query
+        // lazily on first row access, so a query().close() with no read never checkpoints anything.
         fun checkpoint(context: Context) {
-            getDatabase(context).openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL)").close()
+            getDatabase(context).openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL)").use { it.moveToFirst() }
         }
     }
 }

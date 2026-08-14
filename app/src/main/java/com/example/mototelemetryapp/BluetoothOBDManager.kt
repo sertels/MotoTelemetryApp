@@ -254,6 +254,11 @@ class BluetoothOBDManager(
             }
             if (attempt < CONNECT_MAX_ATTEMPTS - 1) delay(CONNECT_RETRY_DELAY_MS.milliseconds)
         }
+        // The IOException path above closes its socket via disconnect(), but a final attempt that
+        // connected and then failed initELM327()'s ATZ verification falls out of the loop with the
+        // socket still open - and these single-connection clone adapters stay occupied by a leaked
+        // RFCOMM channel until something else happens to close it.
+        closeSocketQuietly()
         return@withContext false
     }
 
