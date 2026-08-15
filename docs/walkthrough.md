@@ -119,6 +119,20 @@ architectural patterns behind these.
 - **Settings:** auto-start toggle, grace-period stepper, battery-optimization exemption status,
   diagnostic log sharing, language picker.
 
+## 3b. Laptop-side CAN tooling (`tools/`)
+
+- `tools/obd_terminal.py` talks to the same ELM327 adapter directly from a laptop (Windows exposes
+  the paired adapter as an outgoing Bluetooth-SPP COM port) — probe, raw commands, a change-only
+  `watch` mode, a CAN-ID histogram, and ATMA captures, full-bus or filtered to a single ID inside
+  the adapter via `ATCRA`. The filter is the important part: clone adapters' internal UART tops out
+  around 150 frames/s, so unfiltered captures drop most of a live bus, while one filtered ID
+  streams gap-free (measured: ID `126` at ~50Hz filtered vs ~10Hz seen unfiltered).
+- `tools/can_diff.py` diffs captures taken in different known vehicle states (gear N vs 1st,
+  brakes on/off) and reports bytes stable within each state but different across them.
+- Findings live in `docs/confirmed_pids.md` (broadcast section): gear = ID `126` b0, RPM = `120`
+  b0-1, neutral flag = `120` b4/0x40, odometer = `3FF` b0-2, TPMS candidates `3A1`/`3A2`.
+- Captures land in `tools/captures/` (gitignored — raw session data; the doc records what matters).
+
 ## 4. Cloud Backup & Restore
 
 - `GoogleDriveManager` builds the Drive client directly from the OAuth access token returned by the

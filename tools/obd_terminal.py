@@ -125,10 +125,16 @@ def cmd_raw(args):
             send(ser, c)
 
 
-def run_monitor(ser, seconds, can_id):
-    """ATMA capture with buffer-full restarts; returns the captured lines."""
+def run_monitor(ser, seconds, can_id, spaces_off=True):
+    """ATMA capture with buffer-full restarts; returns the captured lines.
+
+    spaces_off (ATS0) saves ~25% serial bandwidth, but glues the CAN ID to the
+    data bytes - anything that needs to tokenize lines (the ids histogram)
+    must capture with spaces kept on instead.
+    """
     send(ser, "ATH1")
-    send(ser, "ATS0")
+    if spaces_off:
+        send(ser, "ATS0")
     if can_id:
         send(ser, f"ATCRA{can_id}")
     frames = []
@@ -168,7 +174,8 @@ def run_monitor(ser, seconds, can_id):
         if can_id:
             send(ser, "ATAR", quiet=True)  # drop the CRA filter
         send(ser, "ATH0", quiet=True)
-        send(ser, "ATS1", quiet=True)
+        if spaces_off:
+            send(ser, "ATS1", quiet=True)
     return frames
 
 
@@ -186,16 +193,41 @@ def cmd_monitor(args):
     print(f"{len(frames)} lines -> {out}")
 
 
+def cmd_watch(args):
+    """Poll one command and print only the moments its response changes -
+    made for mapping stateful DIDs by hand: start it, work the control
+    (shift gears, squeeze a brake), read the raw byte off the timeline."""
+    with open_port(args.port) as ser:
+        init_elm(ser)
+        if args.header:
+            send(ser, f"ATSH{args.header}")
+        print(f"Watching {args.command} for {args.seconds}s "
+              f"(every {args.interval}s, header {args.header or 'default'})...")
+        last = None
+        deadline = time.monotonic() + args.seconds
+        while time.monotonic() < deadline:
+            resp = send(ser, args.command, quiet=True).replace("\r", " ").strip()
+            if resp != last:
+                stamp = datetime.now().strftime("%H:%M:%S")
+                print(f"  {stamp}  {resp!r}")
+                last = resp
+            time.sleep(args.interval)
+    print("Done.")
+
+
 def cmd_ids(args):
     with open_port(args.port) as ser:
         init_elm(ser)
         print(f"Sampling the bus for {args.seconds}s...")
-        frames = run_monitor(ser, args.seconds, None)
+        frames = run_monitor(ser, args.seconds, None, spaces_off=False)
     counts = {}
     for f in frames:
-        m = re.match(r"^([0-9A-Fa-f]{3,8})", f)
-        if m:
-            counts[m.group(1)] = counts.get(m.group(1), 0) + 1
+        # With spaces on, the first token is the CAN ID (3 hex digits for
+        # 11-bit, 8 for 29-bit); anything else is adapter chatter (BUFFER
+        # FULL, STOPPED) and gets skipped.
+        token = f.split()[0] if f.split() else ""
+        if re.fullmatch(r"[0-9A-Fa-f]{3}|[0-9A-Fa-f]{8}", token):
+            counts[token] = counts.get(token, 0) + 1
     if not counts:
         print("No CAN IDs seen - engine/ignition on? headers (ATH1) acked?")
         return
@@ -220,6 +252,12 @@ def main():
     p = sub.add_parser("ids")
     p.add_argument("seconds", type=int)
     p.set_defaults(func=cmd_ids)
+    p = sub.add_parser("watch")
+    p.add_argument("command")
+    p.add_argument("--seconds", type=int, default=90)
+    p.add_argument("--interval", type=float, default=0.4)
+    p.add_argument("--header", help="ATSH header to set first, e.g. 7E0")
+    p.set_defaults(func=cmd_watch)
     args = ap.parse_args()
     args.func(args)
 
