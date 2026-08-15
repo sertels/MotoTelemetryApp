@@ -67,7 +67,10 @@ fun DashboardScreen(
     maxLeanLeftSource: LeanSource = LeanSource.BIKE,
     maxLeanRightSource: LeanSource = LeanSource.BIKE,
     maxGForceLat: Float = 0f,
-    maxGForceLon: Float = 0f
+    maxGForceLon: Float = 0f,
+    // Whether the gear DID (2243F7) is actually answering right now - drives "–" vs "N" in the
+    // gear readout, since a parse failure and real Neutral both arrive here as gear == 0.
+    gearPidOk: Boolean = true
 ) {
     val currentLean = if (leanSource == LeanSource.PHONE) data?.leanAnglePhone else data?.leanAngleBike
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -111,6 +114,7 @@ fun DashboardScreen(
                     // which made its labels wrap and blow its height past the row's.
                     SpeedGearRpmCard(
                         data,
+                        gearPidOk,
                         horizontalArrangement = Arrangement.spacedBy(20.dp),
                         modifier = Modifier.width(IntrinsicSize.Min)
                     )
@@ -149,7 +153,7 @@ fun DashboardScreen(
                 GpsCoordsText(data)
             }
             Spacer(modifier = Modifier.height(10.dp))
-            SpeedGearRpmCard(data)
+            SpeedGearRpmCard(data, gearPidOk)
             Spacer(modifier = Modifier.height(10.dp))
             LeanGauge(
                 currentLean = currentLean,
@@ -548,6 +552,7 @@ fun ClearDtcsConfirmDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
 @Composable
 fun SpeedGearRpmCard(
     data: TelemetryRecord?,
+    gearPidOk: Boolean,
     // SpaceBetween spreads content to the card's full width, which is right for portrait's
     // fillMaxWidth card - but landscape sizes this card with IntrinsicSize.Min, where the Row's
     // width equals its own minimum, and SpaceBetween's "spread across the extra space" has none
@@ -583,7 +588,7 @@ fun SpeedGearRpmCard(
             Text(text = stringResource(R.string.unit_kmh), color = TelemetryOnSurfaceMuted, fontSize = 13.sp, maxLines = 1, softWrap = false)
         }
         VerticalDivider()
-        GearReadout(data, fontSize = 68.sp)
+        GearReadout(data, gearPidOk, fontSize = 68.sp)
         VerticalDivider()
         Column(horizontalAlignment = Alignment.End) {
             Text(text = stringResource(R.string.rpm), color = TelemetryOnSurfaceMuted, fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
@@ -593,15 +598,24 @@ fun SpeedGearRpmCard(
 }
 
 @Composable
-fun GearReadout(data: TelemetryRecord?, fontSize: androidx.compose.ui.unit.TextUnit) {
+fun GearReadout(data: TelemetryRecord?, gearPidOk: Boolean, fontSize: androidx.compose.ui.unit.TextUnit) {
     // Label above the value, matching how SPEED and RPM are laid out either side of this - it
     // was below before, which read as a different kind of stat in the middle of two consistent
     // ones.
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(text = stringResource(R.string.gear), color = TelemetryOnSurfaceMuted, fontSize = 9.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+        // parseGear returns 0 both for real Neutral and for "the gear DID isn't answering"
+        // (2243F7 rejects with 7F 22 31 on this bike more often than not - see
+        // docs/confirmed_pids.md), and 0 used to render as a confident "N" either way. The
+        // rider can't tell those apart, so gate on the PID's live status: no answer -> "–",
+        // not a fabricated Neutral.
         Text(
-            text = if (data?.gear == 0) "N" else "${data?.gear ?: 0}",
-            color = if (data?.gear == 0) TelemetryAccent else Color.White,
+            text = when {
+                !gearPidOk -> "–"
+                data?.gear == 0 -> "N"
+                else -> "${data?.gear ?: 0}"
+            },
+            color = if (gearPidOk && data?.gear == 0) TelemetryAccent else if (gearPidOk) Color.White else TelemetryOnSurfaceMuted,
             fontSize = fontSize,
             fontWeight = FontWeight.ExtraBold,
             maxLines = 1,

@@ -526,6 +526,7 @@ class MainActivity : AppCompatActivity() {
                                     val maxLeanRightSource by dashboardViewModel.maxLeanRightSource.collectAsState()
                                     val maxGForceLat by dashboardViewModel.maxGForceLat.collectAsState()
                                     val maxGForceLon by dashboardViewModel.maxGForceLon.collectAsState()
+                                    val obdPidStatus by dashboardViewModel.obdPidStatus.collectAsState()
 
                                     DashboardScreen(
                                         data = currentData,
@@ -537,7 +538,12 @@ class MainActivity : AppCompatActivity() {
                                         maxLeanLeftSource = maxLeanLeftSource,
                                         maxLeanRightSource = maxLeanRightSource,
                                         maxGForceLat = maxGForceLat,
-                                        maxGForceLon = maxGForceLon
+                                        maxGForceLon = maxGForceLon,
+                                        // Only an explicitly-confirmed answer counts: absent (never
+                                        // asked yet, or disconnected - pidStatus resets on
+                                        // disconnect) and false (7F/NO DATA) both mean the gear on
+                                        // screen would be fabricated, so both show "–".
+                                        gearPidOk = obdPidStatus["2243F7"] == true
                                     )
                                 } else {
                                     val sessions by dashboardViewModel.sessions.collectAsState()
